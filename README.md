@@ -356,7 +356,7 @@ real-time-object-detection/
 ├── scripts/
 │   ├── download_coco_subset.py
 │   └── build_calibration_set.py
-├── tests/                  67 tests, no GPU or camera required
+├── tests/                  68 tests, no GPU or camera required
 ├── assets/
 │   ├── sample.jpg          CC BY 2.0, bundled for demos and tests
 │   └── calib/              24 CC BY 2.0 images for INT8 calibration
@@ -399,7 +399,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-67 tests, ~5 seconds, no camera and no GPU needed. They cover NMS geometry
+68 tests, ~7 seconds, no camera and no GPU needed. They cover NMS geometry
 (including that per-class suppression keeps a person standing in front of a TV),
 detector output shape and bounds, config validation and CLI precedence, file and
 image sources, error paths for missing/corrupt files, and end-to-end inference on
