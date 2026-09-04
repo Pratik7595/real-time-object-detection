@@ -1,12 +1,19 @@
-"""Fetch YOLOX ONNX weights and verify them against a pinned SHA-256.
+"""Fetch YOLOX ONNX weights, verify them, and build the INT8 model.
 
-    python models/download_weights.py            # yolox-tiny (the default model)
+    python models/download_weights.py            # tiny + INT8 (the shipped setup)
+    python models/download_weights.py --no-quantize
     python models/download_weights.py --model nano
     python models/download_weights.py --all
 
 Weights are deliberately not committed to git. The checksums below were computed
 from the files this project was built and benchmarked against, so a corrupted or
 substituted download fails loudly instead of producing quietly wrong boxes.
+
+The INT8 step runs by default because config/config.yaml points at the quantised
+model: it is 1.9x faster on CPU for 2.5 mAP points. It takes about 8 seconds and
+needs no network -- the calibration images are committed in assets/calib. There
+is no checksum for it because it is built here rather than downloaded, and the
+build is not guaranteed bit-identical across onnxruntime versions.
 """
 
 from __future__ import annotations
@@ -133,6 +140,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dest", default=None, help="Target directory (default: models/)."
     )
+    parser.add_argument(
+        "--no-quantize",
+        action="store_true",
+        help="Skip building the INT8 model. The FP32 weights still work, but "
+        "config/config.yaml points at the INT8 one, so you will need "
+        "--model models/yolox_tiny.onnx to run.",
+    )
     args = parser.parse_args(argv)
 
     dest_dir = Path(args.dest) if args.dest else MODELS_DIR
@@ -141,8 +155,46 @@ def main(argv: list[str] | None = None) -> int:
     for weight in wanted:
         download(weight, dest_dir, force=args.force)
         print(f"         {weight.note}")
+
+    if not args.no_quantize:
+        _build_int8(dest_dir / WEIGHTS[args.model].name, force=args.force)
+
     print("\nLicence: YOLOX weights are Apache-2.0, (c) Megvii Inc. See NOTICE.")
     return 0
+
+
+def _build_int8(src: Path, force: bool = False) -> None:
+    """Quantise to INT8, because that is what config.yaml points at.
+
+    Failure here is reported but not fatal: the FP32 weights are already on
+    disk and usable with --model, and a broken optional step should not leave
+    someone with no working setup at all.
+    """
+    dst = src.with_name(f"{src.stem}_int8.onnx")
+    if dst.exists() and not force:
+        print(f"ok       {dst.name} (already present)")
+        return
+
+    print(f"\nbuilding {dst.name} (INT8, ~8s, no network needed)")
+    sys.path.insert(0, str(MODELS_DIR))
+    try:
+        from quantize import main as quantize_main
+
+        quantize_main(["--src", str(src), "--dst", str(dst), "--mode", "static"])
+    except SystemExit as exc:  # quantize.py raises SystemExit on bad input
+        print(f"warning: INT8 build failed ({exc}).", file=sys.stderr)
+        print(
+            f"         The FP32 weights are fine -- run with "
+            f"--model models/{src.name}",
+            file=sys.stderr,
+        )
+    except Exception as exc:  # noqa: BLE001 - never block setup on this
+        print(f"warning: INT8 build failed ({type(exc).__name__}: {exc}).", file=sys.stderr)
+        print(
+            f"         The FP32 weights are fine -- run with "
+            f"--model models/{src.name}",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

@@ -5,7 +5,10 @@ generates each table is given above it, and the raw output is committed under
 `results/`. Nothing is estimated, extrapolated or copied from a paper — where a
 published figure appears it is labelled as published and attributed.
 
-Two things this document is careful about:
+**The shipped default is the INT8 model**, so it is what the headline tables
+measure. FP32 is reported alongside wherever the comparison is the point.
+
+Three things this document is careful about:
 
 * **Speed and accuracy were measured on different inputs.** FPS comes from a
   fixed image loop and a live camera. Accuracy comes from 300 labelled COCO
@@ -14,6 +17,8 @@ Two things this document is careful about:
 * **This laptop throttles.** It is a thin 15 W chassis and the sustained clock is
   well below the boost clock. That turned out to matter more than most of the
   optimisations, so it is documented first rather than buried.
+* **The INT8 model is not calibrated on the evaluation set.** That distinction is
+  easy to get wrong and it is why §5 can be trusted; see §5.0.
 
 ---
 
@@ -32,7 +37,7 @@ Two things this document is careful about:
 | onnxruntime | 1.29.0, `CPUExecutionProvider` |
 | opencv-python | 5.0.0.93 |
 | numpy | 2.5.2 |
-| Camera | HP TrueVision HD, built-in, 640×480 @ 30 fps |
+| Camera | HP TrueVision HD, built-in, 640×480, nominal 30 fps |
 
 ### How a run works
 
@@ -44,11 +49,10 @@ first 30 frames, and reports the rest. Specifics that matter:
   `putText` are also one-off costs. On this machine frame 0 costs ~625 ms
   against ~26 ms for every frame after it. Those frames stay in the per-run CSV
   and are excluded from the summary.
-- **The default source is `assets/sample.jpg`, looped, not the camera.** A
-  camera caps throughput at its own 30 fps and varies with exposure and
-  lighting, so it measures the camera rather than the detector. The consequence
-  is that the `capture` column is ~0.03 ms and is *not* representative of live
-  capture; the live measurement in §3 is reported separately for that reason.
+- **The default source is `assets/sample.jpg`, looped, not the camera.** This is
+  more important than it first looks — see §3.1, where the camera turns out to
+  be the binding constraint on live frame rate. The consequence is that the
+  `capture` column here is ~0.03 ms and is *not* representative of live capture.
 - **Rendering is included.** Boxes and labels are drawn on every benchmarked
   frame; only `imshow` is skipped. A benchmark that skipped drawing would report
   a frame rate the app can never actually reach.
@@ -72,7 +76,8 @@ python -m src.benchmark --sizes 416 416 416 416 --frames 150 --warmup 20 --settl
 | 3 | 20.4 | 45.7 |
 | 4 | 19.4 | 48.2 |
 
-Raw output: [`results/throttling_repeat.md`](../results/throttling_repeat.md).
+Raw output: [`results/throttling_repeat.md`](../results/throttling_repeat.md)
+(measured on FP32, before INT8 became the default).
 
 A 20% decline with nothing changed but time. This is the package dropping off
 its boost clock, and it is larger than most of the optimisations measured below.
@@ -81,12 +86,12 @@ and the "effect" measured is really the running order.
 
 So `benchmark.py` takes a `--settle` argument (default 20 s) that loads the CPU
 to a steady thermal state *before* the first measurement. Every table below was
-produced with `--settle 25`. The numbers are consequently lower than a
-cold-start run and are the ones the machine actually sustains.
+produced with `--settle 25`.
 
-**Where a difference is only a few percent, settling is not enough**, because the
-drift within a sweep is of the same order. Those comparisons were re-run as
-interleaved A/B tests (ABABAB) so drift hits both arms equally — see §4.2.
+**Where a difference is only a few percent, settling is not enough**, because
+drift within a sweep is the same size as the effect. Those comparisons were
+re-run as counterbalanced A/B tests — see §4.2, which is also a worked example
+of a sequential ablation row pointing the *opposite* way to the paired test.
 
 ---
 
@@ -94,6 +99,7 @@ interleaved A/B tests (ABABAB) so drift hits both arms equally — see §4.2.
 
 ```bash
 python -m src.benchmark --frames 300 --warmup 30 --settle 25
+python -m src.benchmark --frames 300 --warmup 30 --settle 25 --model models/yolox_tiny.onnx
 ```
 
 Raw output: [`results/benchmark_resolution.md`](../results/benchmark_resolution.md)
@@ -101,29 +107,39 @@ Raw output: [`results/benchmark_resolution.md`](../results/benchmark_resolution.
 Capture is 640×480 throughout; the variable is the network input. Sizes other
 than 416 use the variable-input graph from `models/make_dynamic.py`.
 
+### INT8 (shipped default)
+
 | Model input | Device | FPS mean | FPS median | FPS p95 | FPS p5 | Inference ms | Frame ms | CPU % | Peak RSS MB | Dets/frame |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 320×320 | CPU (i5-1135G7) | **32.4** | 33.0 | 42.4 | 24.9 | 28.75 | 30.81 | 398 | 129 | 8.80 |
-| **416×416** (shipped) | CPU (i5-1135G7) | **19.8** | 19.8 | 25.4 | 16.1 | 47.11 | 50.49 | 397 | 142 | 9.90 |
-| 512×512 | CPU (i5-1135G7) | **13.2** | 13.1 | 17.1 | 11.1 | 71.79 | 75.95 | 397 | 166 | 11.00 |
+| 320×320 | CPU (i5-1135G7) | **53.7** | 54.4 | 66.3 | 44.1 | 16.27 | 18.57 | 396 | 105 | 8.80 |
+| **416×416** (shipped) | CPU (i5-1135G7) | **38.0** | 38.4 | 46.0 | 31.4 | 22.85 | 26.26 | 399 | 112 | 9.90 |
+| 512×512 | CPU (i5-1135G7) | **27.6** | 27.9 | 32.7 | 23.2 | 31.58 | 36.20 | 396 | 121 | 11.00 |
+
+### FP32, same sweep
+
+| Model input | FPS mean | FPS median | FPS p95 | FPS p5 | Inference ms | Frame ms | Peak RSS MB |
+|---|---|---|---|---|---|---|---|
+| 320×320 | 32.4 | 33.0 | 42.4 | 24.9 | 28.75 | 30.81 | 129 |
+| 416×416 | 19.8 | 19.8 | 25.4 | 16.1 | 47.11 | 50.49 | 142 |
+| 512×512 | 13.2 | 13.1 | 17.1 | 11.1 | 71.79 | 75.95 | 166 |
 
 CPU % is relative to a single core, so 398% means all four cores saturated.
 
 Reading this honestly:
 
-- **The >15 FPS requirement is met at 320 and 416, and missed at 512.** 512 is in
-  the table because it is the measurement that shows where the approach runs
-  out, not because it is a recommendation.
-- **416 clears the bar by ~32% under sustained thermal load.** On a cold machine
-  the same configuration measures 24–35 FPS; those runs are real but not
-  representative of a machine that has been running for a minute.
-- Scaling is worse than pixel count predicts. 512 has 1.5× the pixels of 416 but
-  costs 1.52× the time; 416 has 1.69× the pixels of 320 and costs 1.64×. Roughly
-  linear in pixels, with no cliff — consistent with being compute-bound rather
-  than memory-bound at these sizes.
-- Detections per frame rise with input size (8.80 → 11.00) on the identical
-  image. Higher resolution genuinely finds more objects, which is the trade the
-  §5 table quantifies against accuracy.
+- **The >15 FPS requirement is met at every INT8 resolution**, with 2.5×
+  headroom at the shipped 416. FP32 clears it at 320 and 416 and **misses at
+  512** (13.2) — which is why 512 was in the original table at all: it showed
+  where the FP32 approach ran out. INT8 moves that boundary past 512.
+- Even the worst INT8 p5 (23.2 FPS at 512) clears 15, so the requirement holds
+  on the slow tail and not just on the average.
+- **Quantisation helps more at large inputs than small ones**: 1.66× at 320,
+  1.92× at 416, 2.09× at 512. Bigger tensors spend proportionally more time in
+  convolution, which is exactly what INT8 makes cheaper.
+- Detections per frame are *identical* between FP32 and INT8 at each resolution
+  (8.80 / 9.90 / 11.00 on this image). Quantisation shifts confidences, not the
+  gross number of objects found — the accuracy cost shows up in localisation and
+  ranking, which is what §5 measures.
 
 ---
 
@@ -131,49 +147,79 @@ Reading this honestly:
 
 Same runs as §2. All values are milliseconds, mean over 300 frames.
 
+### INT8 (shipped)
+
+| Configuration | capture | preprocess | inference | postprocess | render | **total** |
+|---|---|---|---|---|---|---|
+| 320×320 | 0.12 | 0.60 | 16.27 | 1.14 | 0.44 | **18.57** |
+| 416×416 (shipped) | 0.03 | 1.22 | 22.85 | 1.71 | 0.46 | **26.26** |
+| 512×512 | 0.03 | 1.53 | 31.58 | 2.58 | 0.48 | **36.20** |
+
+### FP32
+
 | Configuration | capture | preprocess | inference | postprocess | render | **total** |
 |---|---|---|---|---|---|---|
 | 320×320 | 0.03 | 0.58 | 28.75 | 1.05 | 0.41 | **30.81** |
-| 416×416 (shipped) | 0.03 | 1.20 | 47.11 | 1.72 | 0.44 | **50.49** |
+| 416×416 | 0.03 | 1.20 | 47.11 | 1.72 | 0.44 | **50.49** |
 | 512×512 | 0.03 | 1.47 | 71.79 | 2.19 | 0.47 | **75.95** |
 
-**Inference is 93% of the frame budget at 416.** Everything else put together is
-3.4 ms. That single fact determined which optimisations were worth pursuing and
-which were not — see §4.
+**Inference is 87% of the frame budget under INT8 at 416, down from 93% under
+FP32.** Everything else together is 3.4 ms in both cases — quantisation did not
+make preprocessing or NMS cheaper, it just made inference stop dominating quite
+so completely. That shift is what makes §7's third option worth reconsidering.
 
-### Live camera, for comparison
+### 3.1 Live camera — and why it is now the bottleneck
 
 ```bash
-python -m src.main --source 0 --no-display --max-frames 150
+python -m src.main --source 0 --no-display --max-frames 200
 ```
 
-| Stage | Image loop (416) | Live camera (416) |
-|---|---|---|
-| capture | 0.03 ms | **0.11 ms** |
-| preprocess | 1.20 ms | 0.80 ms |
-| inference | 47.11 ms | 41.44 ms |
-| postprocess | 1.72 ms | 0.89 ms |
-| render | 0.44 ms | 0.26 ms |
-| FPS mean | 19.8 | **23.0** |
+| Stage | Image loop (416 INT8) | Live camera (416 INT8) | Live camera (416 FP32, earlier) |
+|---|---|---|---|
+| capture | 0.03 ms | **48.20 ms** | 0.11 ms |
+| preprocess | 1.22 ms | 0.75 ms | 0.80 ms |
+| inference | 22.85 ms | 16.59 ms | 41.44 ms |
+| postprocess | 1.71 ms | 0.86 ms | 0.89 ms |
+| render | 0.46 ms | 0.26 ms | 0.26 ms |
+| **FPS mean** | **38.0** | **15.0** | **23.0** |
 
-Two things to note:
+The live INT8 run is *slower* than the live FP32 run. That is not a regression,
+and it is worth spelling out because it is the most counter-intuitive number in
+this document.
 
-1. **Capture costs 0.11 ms on a live 30 fps camera.** This is the threading model
-   working. The camera produces frames faster than the pipeline consumes them,
-   so a frame is always already waiting and the main loop never blocks on I/O.
-   A single-threaded implementation would pay the camera's frame interval here.
-2. **The live run looks faster (23.0 vs 19.8) and that is a thermal artefact,
-   not a real difference.** It was a shorter run (6.3 s) on a cooler machine. It
-   is reported because it is the honest live measurement, not because live
-   capture is somehow quicker than reading a JPEG from RAM.
+I measured the camera on its own, with no inference in the loop at all:
 
-### Cost of `--record`
+| Trial | Frames | Wall clock | Delivered fps | Frames dropped |
+|---|---|---|---|---|
+| 1 | 120 | 8.00 s | **15.0** | 0 |
+| 2 | 120 | 8.00 s | **15.0** | 0 |
+
+The webcam was delivering exactly 15.0 fps. Its nominal rate is 30, but it had
+dropped to 15 as the room darkened over the evening — a standard auto-exposure
+behaviour, where longer exposures halve the sensor's frame rate. The earlier
+FP32 live run happened in better light, when the camera was still supplying
+~30 fps and the detector (24 FPS capable) was the limit; the `capture` cost of
+0.11 ms in that column is what "the camera is outrunning us" looks like.
+
+Three conclusions:
+
+1. **Live FPS is now camera-bound, not compute-bound.** 48.2 ms of a 66.7 ms
+   frame is spent waiting for the sensor. Making inference faster than the
+   camera's frame interval cannot raise live frame rate any further.
+2. **The drop-stale buffer is doing its job**: zero frames dropped, because the
+   consumer is now faster than the producer. When the camera was the faster of
+   the two, the same code kept latency bounded by discarding stale frames.
+3. **A live FPS figure measures your camera and your lighting** as much as it
+   measures this code. That is precisely why `benchmark.py` defaults to a
+   deterministic file source, and why the headline numbers in §2 come from there.
+
+### 3.2 Cost of `--record`
 
 Enabling the MP4 writer moves the `render` stage from 0.44 ms to 2.35 ms — about
-**1.9 ms per frame, roughly 4%**. There is also a one-off ~20 ms stall on the
-frame where the writer opens (codec initialisation), which is why the first
-measurement of this looked like a 25% penalty until the writer was forced open
-from frame 0 to isolate it.
+**1.9 ms per frame, roughly 4%** on FP32 and ~7% on the faster INT8 pipeline.
+There is also a one-off ~20 ms stall on the frame where the writer opens (codec
+initialisation), which is why the first measurement of this looked like a 25%
+penalty until the writer was forced open from frame 0 to isolate it.
 
 ---
 
@@ -187,59 +233,62 @@ Raw output: [`results/benchmark_ablation.md`](../results/benchmark_ablation.md)
 
 ### 4.1 Before / after
 
-Rows are cumulative; each adds one change to the row above.
+Rows are cumulative and start from unoptimised FP32, so row A is a genuine
+"before" rather than the shipped article.
 
-| # | Change | FPS mean | Δ FPS | preprocess ms | inference ms | frame ms | Peak RSS MB |
-|---|---|---|---|---|---|---|---|
-| A | Baseline: allocate preprocessing buffers per frame | 19.2 | — | 3.42 | 46.33 | 51.89 | 142 |
-| B | **+ preallocated buffers** *(shipped)* | **20.9** | **+8.9%** | **1.01** | 44.64 | 47.72 | 140 |
-| C | + cap OpenCV to 2 threads | 19.4 | −7.2% | 1.24 | 48.01 | 51.53 | 142 |
-| D | + `--infer-every 2` | 40.6 | +94% | 0.61 | 22.63 | 24.60 | 141 |
-| E | + INT8 quantisation | **42.1** | **+101%** | 1.12 | 20.68 | 23.72 | **111** |
-
-Rows D and E are alternatives to B, not additions to each other in practice —
-`--infer-every 2` is a runtime flag and INT8 is a different model file.
+| # | Change | Model | FPS mean | Δ vs A | preprocess ms | inference ms | frame ms | Peak RSS MB |
+|---|---|---|---|---|---|---|---|---|
+| A | Baseline: allocate preprocessing buffers per frame | FP32 | 20.1 | — | 3.53 | 43.97 | 49.71 | 144 |
+| B | + preallocated buffers | FP32 | 21.6 | +7.5% | **1.04** | 43.17 | 46.28 | 141 |
+| C | + cap OpenCV to 2 threads | FP32 | 22.1 | +10.0% | 1.19 | 41.90 | 45.22 | 141 |
+| D | **+ INT8 quantisation** *(shipped)* | INT8 | **43.2** | **+115%** | 1.14 | **20.06** | 23.10 | **112** |
+| E | + `--infer-every 2` | INT8 | 85.3 | +324% | 0.56 | 9.94 | 11.69 | 112 |
 
 ### 4.2 What actually worked, and what did not
 
-**Preallocated preprocessing buffers — kept (+8.9%).** Reusing the resize target,
-the letterbox canvas and the NCHW blob across frames cut preprocessing from
-3.42 ms to 1.01 ms, a **70% reduction in that stage**. But that stage was only
-6.6% of the frame, so the end-to-end gain is 8.9%. Worth having, and a useful
-reminder that a large relative win on a small stage is a small absolute win.
+**INT8 quantisation — the change worth making (+115% over baseline, 1.9–2.1×
+over like-for-like FP32).** Static quantisation calibrated on the 24 images in
+`assets/calib/`. Inference falls from 43.2 ms to 20.1 ms, the model file from
+20.2 MB to 5.2 MB, and peak RSS from 141 MB to 112 MB. The accuracy cost is 2.5
+mAP@0.5:0.95 points (§5). It is now the default, and the ~8-second build runs as
+part of `models/download_weights.py`.
 
-**Capping OpenCV threads — tested and rejected (−7.2%).** The design document
-predicted this would help: OpenCV and ONNX Runtime both default to grabbing
-every core, which on a 4-core chip looked like obvious oversubscription. It was
-wrong. Because the difference is small enough to be confused with thermal drift,
-it was re-run as an interleaved A/B (three rounds, alternating arms):
+**Preallocated preprocessing buffers — kept (+7.5%).** Reusing the resize
+target, letterbox canvas and NCHW blob across frames cut preprocessing from
+3.53 ms to 1.04 ms, a **71% reduction in that stage**, for a 7.5% end-to-end
+gain. A large relative win on a small stage is a small absolute win. Worth
+having; not worth mistaking for the main event.
 
-| Round | OpenCV default | OpenCV capped to 2 |
-|---|---|---|
-| 1 | 20.00 | 19.21 |
-| 2 | 20.23 | 19.51 |
-| 3 | 20.16 | 18.74 |
-| **mean** | **20.13** | **19.15** |
+**Capping OpenCV threads — still rejected, and a useful lesson in how not to
+read an ablation table.** Row C above says capping *helped* by 2.3% over row B.
+The earlier FP32 ablation said it *hurt* by 7.2%. Both are single sequential
+runs a few percent apart, which is exactly the resolution limit established in
+§1. So it was re-run properly, counterbalanced (ABBA ordering, four pairs), on
+the INT8 model that now ships:
 
-Capping loses in every round. The default was therefore changed from `2` to `0`
-(leave OpenCV alone) in `config/config.yaml`. The knob remains, because it is
-the right lever on a machine that is busy doing something else — it is just not
-a win here. I have not established the mechanism; the plausible explanation is
-that `cv2.setNumThreads` reconfigures a threading runtime shared with ORT, but
-that is a hypothesis, not a measurement.
+| Round | Order | OpenCV default | OpenCV capped to 2 |
+|---|---|---|---|
+| 1 | A→B | 35.95 | 37.50 |
+| 2 | B→A | 35.42 | 34.05 |
+| 3 | A→B | 39.59 | 34.66 |
+| 4 | B→A | 39.59 | 37.80 |
+| **mean** | | **37.64** | **36.00** |
 
-**Frame skipping (`--infer-every 2`) — available, off by default (+94%).** This
-doubles throughput by doing half the work, and boxes on skipped frames are stale
-by one frame. The HUD says so on screen while it is active. It is documented as
-a fallback for hardware that cannot clear 15 FPS otherwise, not as a default,
-because it improves the number without improving what the user sees.
+Capping measures **−4.3%**, reproducing the direction of the earlier FP32 test
+(−5.0%). But note the spread *within* each arm: 35.4–39.6 for the default. The
+effect is the same order as the run-to-run noise, so the honest conclusion is
+**"no evidence that capping helps"**, not "capping is definitely harmful". The
+default stays `0` (leave OpenCV alone) on that basis. The knob remains for
+machines that are busy doing something else. I have not established a mechanism;
+the plausible story is that `cv2.setNumThreads` reconfigures a threading runtime
+shared with ORT, but that is a hypothesis, not a measurement.
 
-**INT8 quantisation — the biggest single win (+101%).** Static quantisation
-calibrated on 64 real COCO images (`python models/quantize.py --mode static`).
-Inference drops from 44.6 ms to 20.7 ms, the model file from 20.2 MB to 5.2 MB,
-and peak RSS from 140 MB to 111 MB. The accuracy cost is measured in §5.3. It is
-not the default only because it requires a build step; on this hardware it is
-the right choice for anything latency-sensitive.
+**Frame skipping (`--infer-every 2`) — available, off by default (+97% over
+row D).** Doubles throughput by doing half the work; boxes on skipped frames are
+one frame stale and the HUD says so on screen. Documented as a fallback for
+hardware that cannot clear 15 FPS, not as a default, because it improves the
+number without improving what the user sees. At 85 FPS on this machine it is
+well past the point of usefulness anyway.
 
 ### 4.3 ONNX Runtime thread scaling
 
@@ -249,19 +298,32 @@ python -m src.benchmark --threads-sweep --frames 200 --warmup 30 --settle 25
 
 Raw output: [`results/benchmark_threads.md`](../results/benchmark_threads.md)
 
-| intra_op_num_threads | FPS mean | Inference ms | CPU % |
-|---|---|---|---|
-| ORT default *(shipped)* | 19.1 | 48.73 | 397 |
-| 1 | 13.1 | 73.92 | 100 |
-| 2 | 16.6 | 57.54 | 199 |
-| 4 | 20.4 | 45.56 | 398 |
-| 8 | 19.3 | 46.93 | 757 |
+Measured on the shipped INT8 model:
 
-Scaling from 1 to 4 threads gives 1.56× on 4 cores — normal for convolution
-workloads. Going to 8 (hyperthreads) buys nothing and costs 1.9× the CPU, which
-matters on battery. ORT's own default already behaves like 4, so the shipped
-config leaves `intra_op_threads: 0`; hardcoding `4` would be a marginal win here
-and wrong on a reviewer's 8- or 16-core machine.
+| intra_op_num_threads | FPS mean | Inference ms | CPU % | FPS per 100% CPU |
+|---|---|---|---|---|
+| ORT default *(shipped)* | 42.6 | 20.32 | 399 | 10.7 |
+| 1 | 33.3 | 27.95 | 101 | 33.0 |
+| 2 | 42.1 | 21.32 | 199 | 21.2 |
+| 4 | 42.8 | 20.26 | 404 | 10.6 |
+| 8 | 33.1 | 26.01 | 767 | 4.3 |
+
+Quantisation changed the shape of this curve, and in a useful direction:
+
+- **INT8 scales worse with threads than FP32 did** — 1 → 4 threads gives 1.29×
+  here against 1.56× on FP32. The model is now cheap enough per layer that
+  thread-dispatch overhead is a visible share of the work.
+- **`intra_op=2` reaches 98.4% of the best result on half the cores.** On a
+  laptop running on battery, or a machine doing anything else, that is the
+  configuration I would actually pick.
+- **8 threads is now clearly harmful** (−22.7% against 4, at 1.9× the CPU),
+  where on FP32 it was merely pointless. Hyperthread contention costs more when
+  each thread's slice of work is smaller.
+
+The shipped config still leaves `intra_op_threads: 0`, because ORT's own default
+lands within noise of the best here and hardcoding `4` would be wrong on a
+reviewer's 8- or 16-core machine. `--threads 2` is a one-flag change for anyone
+who cares more about CPU headroom than the last 2%.
 
 ---
 
@@ -273,64 +335,89 @@ and wrong on a reviewer's 8- or 16-core machine.
 
 ```bash
 python scripts/download_coco_subset.py --images 300
-python -m src.evaluate
+python -m src.evaluate                                        # INT8 (default)
+python -m src.evaluate --model models/yolox_tiny.onnx         # FP32
 ```
 
-Raw output: [`results/accuracy_fp32.md`](../results/accuracy_fp32.md) ·
-[`results/accuracy_int8.md`](../results/accuracy_int8.md)
+Raw output: [`results/accuracy_int8.md`](../results/accuracy_int8.md) ·
+[`results/accuracy_fp32.md`](../results/accuracy_fp32.md)
 
-**Method note.** Detections are gathered once at `conf=0.001` and thresholded
-afterwards. mAP is the area under the precision-recall curve and needs the
-low-confidence tail to trace that curve; evaluating at the app's 0.30 default
-would truncate it and understate mAP substantially. Precision, recall and F1 are
-operating-point metrics and are reported at a stated threshold (0.30).
+### 5.0 Two methodology points
+
+**Calibration data is disjoint from evaluation data.** Static quantisation
+derives its activation ranges from real images. The first version of this model
+was calibrated on the first 64 images of `data/coco_subset` — which is the
+evaluation set. That is test-set contamination: the quantised model had been
+tuned on the data it was then scored against. The shipped model calibrates on
+the 24 images in `assets/calib/`, selected by
+`scripts/build_calibration_set.py` from val2017 images *outside* the first 300.
+
+The measured size of that bias, for the record:
+
+| | mAP@0.5:0.95 | mAP@0.5 |
+|---|---|---|
+| Calibrated on the eval set (wrong) | 0.3312 | 0.5226 |
+| Calibrated on held-out images (shipped) | **0.3316** | **0.5183** |
+
+0.0004 on the primary metric — negligible, and it happened to land in the
+*unfavourable* direction on mAP@0.5:0.95. The number barely moved; the method
+still had to be fixed, because "it turned out not to matter" is only knowable
+after you check.
+
+**Two different confidence thresholds are in play.** Detections are gathered
+once at `conf=0.001` and thresholded afterwards. mAP is the area under the
+precision-recall curve and needs the low-confidence tail to trace that curve;
+evaluating at the app's 0.30 default would truncate it and understate mAP
+substantially. Precision, recall and F1 are operating-point metrics and are
+reported at a stated threshold (0.30).
 
 ### 5.1 Headline
 
-| Metric | YOLOX-Tiny FP32 | YOLOX-Tiny INT8 |
-|---|---|---|
-| **mAP@0.5** | **0.5326** | 0.5226 |
-| **mAP@0.5:0.95** | **0.3568** | 0.3312 |
-| mAP@0.75 | 0.3827 | 0.3604 |
-| mAP small | 0.1847 | 0.1731 |
-| mAP medium | 0.3582 | 0.3239 |
-| mAP large | 0.5464 | 0.5044 |
-| AR@100 | 0.4786 | — |
+| Metric | **INT8 (shipped)** | FP32 | Δ |
+|---|---|---|---|
+| **mAP@0.5** | **0.5183** | 0.5326 | −0.0143 (−2.7%) |
+| **mAP@0.5:0.95** | **0.3316** | 0.3568 | −0.0252 (−7.1%) |
+| mAP@0.75 | 0.3544 | 0.3827 | −0.0283 |
+| mAP small | 0.1717 | 0.1847 | −0.0130 |
+| mAP medium | 0.3247 | 0.3582 | −0.0335 |
+| mAP large | 0.5077 | 0.5464 | −0.0387 |
+
+The pattern is worth noting: **the loss is much larger at strict IoU than loose**
+(−7.4% at IoU 0.75 vs −2.7% at IoU 0.5). Quantisation mostly costs *localisation
+precision* — boxes end up slightly less well fitted — rather than causing the
+model to miss objects outright. That matches §2, where detections-per-frame were
+identical between the two models.
 
 For context, the YOLOX authors publish **32.8** mAP@0.5:0.95 for YOLOX-Tiny on
-the *full* 5000-image val2017 set. This measurement is 35.7 on a 300-image
-subset. The gap is subset sampling error, not a better model — a 300-image slice
-is not a substitute for full val2017, which is why every table says "300-image
-subset" rather than quoting these as COCO val2017 results.
+the *full* 5000-image val2017 set. FP32 here measures 35.7 on a 300-image
+subset. The gap is subset sampling error, not a better model — which is why
+every table says "300-image subset" rather than quoting these as COCO val2017
+results.
 
 ### 5.2 Per-class precision / recall / F1
 
-At `conf=0.30`, `IoU=0.50`. Full 60-row table in
-[`results/accuracy_fp32.csv`](../results/accuracy_fp32.csv); the classes with the
-most ground-truth instances in the subset:
+Shipped INT8, at `conf=0.30`, `IoU=0.50`. Full table in
+[`results/accuracy_int8.csv`](../results/accuracy_int8.csv):
 
 | Class | GT | TP | FP | FN | Precision | Recall | F1 |
 |---|---|---|---|---|---|---|---|
-| person | 685 | 437 | 93 | 248 | 0.825 | 0.638 | 0.719 |
-| chair | 119 | 45 | 30 | 74 | 0.600 | 0.378 | 0.464 |
-| book | 75 | 11 | 7 | 64 | 0.611 | 0.147 | 0.237 |
-| cup | 69 | 29 | 22 | 40 | 0.569 | 0.420 | 0.483 |
-| car | 67 | 38 | 19 | 29 | 0.667 | 0.567 | 0.613 |
-| bottle | 66 | 19 | 25 | 47 | 0.432 | 0.288 | 0.345 |
-| dining table | 48 | 24 | 20 | 24 | 0.545 | 0.500 | 0.522 |
-| tie | 45 | 12 | 3 | 33 | 0.800 | 0.267 | 0.400 |
-| wine glass | 44 | 14 | 3 | 30 | 0.824 | 0.318 | 0.459 |
-| bowl | 38 | 21 | 9 | 17 | 0.700 | 0.553 | 0.618 |
-| laptop | 19 | 15 | 9 | 4 | 0.625 | 0.789 | 0.698 |
-| tv | 19 | 14 | 4 | 5 | 0.778 | 0.737 | 0.757 |
-| motorcycle | 22 | 15 | 4 | 7 | 0.789 | 0.682 | 0.732 |
-| **micro-average** | **2145** | **1050** | **463** | **1095** | **0.694** | **0.490** | **0.574** |
+| person | 685 | 430 | 104 | 255 | 0.805 | 0.628 | 0.706 |
+| chair | 119 | 43 | 35 | 76 | 0.551 | 0.361 | 0.437 |
+| book | 75 | 12 | 9 | 63 | 0.571 | 0.160 | 0.250 |
+| cup | 69 | 28 | 19 | 41 | 0.596 | 0.406 | 0.483 |
+| car | 67 | 37 | 15 | 30 | 0.712 | 0.552 | 0.622 |
+| bottle | 66 | 19 | 24 | 47 | 0.442 | 0.288 | 0.349 |
+| dining table | 48 | 26 | 28 | 22 | 0.482 | 0.542 | 0.510 |
+| **micro-average** | **2145** | **1035** | **504** | **1110** | **0.673** | **0.483** | **0.562** |
 
-The shape of this is consistent and worth stating plainly: **precision (0.69) is
-much better than recall (0.49)**. At a 0.30 threshold the model is conservative —
+FP32 micro-average for comparison: **0.694 / 0.490 / 0.574**. Quantisation costs
+about 2 points of precision and 0.7 of recall at this operating point.
+
+The shape is consistent and worth stating plainly: **precision (0.67) is much
+better than recall (0.48)**. At a 0.30 threshold the model is conservative —
 what it reports is usually right, but it misses about half of everything
-labelled. `book` (recall 0.147) and `handbag` (0.138) are the clearest failures,
-and both are dominated by small, cluttered, overlapping instances.
+labelled. `book` (recall 0.160) is the clearest failure, and it is dominated by
+small, cluttered, overlapping instances.
 
 Some classes score 0.000 on a subset this small — `cow` (9 GT), `donut` (8),
 `orange` (4), `scissors` (2). With that little support these are anecdotes, not
@@ -340,43 +427,48 @@ measurements, and should not be read as "the model cannot detect oranges".
 
 | Configuration | FPS mean | mAP@0.5:0.95 | mAP@0.5 | Model size |
 |---|---|---|---|---|
+| 320×320 INT8 | 53.7 | not measured | not measured | 5.2 MB |
+| **416×416 INT8** *(shipped)* | **38.0** | **0.3316** | **0.5183** | **5.2 MB** |
+| 512×512 INT8 | 27.6 | not measured | not measured | 5.2 MB |
 | 320×320 FP32 | 32.4 | not measured | not measured | 20.2 MB |
-| 416×416 FP32 *(shipped)* | 19.8 | 0.3568 | 0.5326 | 20.2 MB |
-| 416×416 INT8 | 42.1 | 0.3312 | 0.5226 | **5.2 MB** |
+| 416×416 FP32 | 19.8 | 0.3568 | 0.5326 | 20.2 MB |
 | 512×512 FP32 | 13.2 | not measured | not measured | 20.2 MB |
 
-**INT8 is the standout: 2.1× the throughput for 2.6 mAP points (a 7.2% relative
-drop), in a quarter of the disk space.** On mAP@0.5 the cost is only 1.0 point.
-If this were going into production on this class of hardware, INT8 at 416 would
-be the configuration to ship.
+**The decision this table drove: INT8 at 416 gives 1.9× the frame rate of FP32
+at 416 for 2.5 mAP@0.5:0.95 points, in a quarter of the disk space.** On a
+CPU-only target that is a clearly favourable trade, so it became the default.
 
-The 320 and 512 rows are honestly marked "not measured" — `evaluate.py` can
-produce them (`--imgsz 320` with the dynamic model) but the runs were not
-performed, and inventing plausible numbers is exactly what this document is
-trying to avoid.
+Note also that **INT8 at 512 (27.6 FPS, higher input resolution) beats FP32 at
+416 (19.8 FPS) outright** — more pixels *and* more speed. Whether it beats it on
+accuracy is untested, and is the single most interesting unmeasured question
+left here.
+
+The rows marked "not measured" are honest: `evaluate.py` can produce them
+(`--imgsz 320` with the dynamic model) but the runs were not performed, and
+inventing plausible numbers is exactly what this document is trying to avoid.
 
 ### 5.4 Confidence-threshold sensitivity
 
-FP32, 416, same 300 images. `dets/image` is what a viewer actually sees on screen.
+Shipped INT8, 416, same 300 images. `dets/image` is what a viewer sees on screen.
 
 | conf | mAP@0.5 | mAP@0.5:0.95 | dets/image |
 |---|---|---|---|
-| 0.15 | 0.4842 | 0.3351 | 7.49 |
-| 0.25 | 0.4532 | 0.3205 | 5.60 |
-| **0.30** *(shipped)* | 0.4426 | 0.3149 | 5.04 |
-| 0.40 | 0.4181 | 0.3024 | 4.19 |
-| 0.60 | 0.3593 | 0.2714 | 2.89 |
+| 0.15 | 0.4723 | 0.3100 | 7.62 |
+| 0.25 | 0.4472 | 0.2992 | 5.78 |
+| **0.30** *(shipped)* | 0.4353 | 0.2934 | 5.13 |
+| 0.40 | 0.4078 | 0.2808 | 4.17 |
+| 0.60 | 0.3560 | 0.2540 | 2.94 |
 
 (These mAP values are lower than §5.1 by construction: each row scores only the
-detections surviving that threshold, so the PR curve is truncated. The row that
-matters for comparison is the *shape*, not the absolute value.)
+detections surviving that threshold, so the PR curve is truncated. What matters
+for comparison is the shape, not the absolute value.)
 
-Raising the threshold from 0.15 to 0.60 removes 61% of the boxes and costs 26%
+Raising the threshold from 0.15 to 0.60 removes 61% of the boxes and costs 25%
 of the mAP@0.5. **0.30 was chosen from this table**: it keeps roughly five
 detections per frame — enough to look responsive without the screen filling with
-low-confidence clutter — while giving up 8.6% of the mAP@0.5 available at 0.15.
+low-confidence clutter — while giving up 7.8% of the mAP@0.5 available at 0.15.
 Below 0.25 the live view becomes noticeably noisy; above 0.45 objects held at
-arm's length start dropping out.
+arm's length start dropping out. The FP32 curve has the same shape.
 
 ---
 
@@ -384,39 +476,53 @@ arm's length start dropping out.
 
 Stated from the measurements above, not from general knowledge about detectors.
 
-**Small objects.** mAP small is **0.1847** against 0.5464 for large — a 3× gap.
-This is the model's single biggest weakness and it is structural: at 416×416 a
-distant object may occupy a handful of pixels after letterboxing. Concretely,
-`book` and `handbag` recall sit near 0.14. Holding an object closer to the
-camera genuinely improves detection, which is why the demo shot list includes a
+**Small objects.** INT8 mAP small is **0.1717** against 0.5077 for large — a
+nearly 3× gap. This is the model's single biggest weakness and it is structural:
+at 416×416 a distant object may occupy a handful of pixels after letterboxing.
+Concretely, `book` recall sits at 0.160. Holding an object closer to the camera
+genuinely improves detection, which is why the demo shot list includes a
 distance shot.
+
+**Live frame rate is limited by the camera, not this code.** Measured directly:
+15.0 fps delivered with no inference running (§3.1). Any claim that this system
+"runs at N FPS live" is a claim about the camera and the lighting.
+
+**Localisation under quantisation.** INT8 loses 7.4% of mAP@0.75 against 2.7% of
+mAP@0.5. Boxes are slightly looser. If precise box geometry matters more than
+frame rate for your use, run FP32.
 
 **Motion blur.** Not quantified — there is no labelled motion-blur set here, and
 measuring it properly would need one. Qualitatively, on the live camera, fast
-hand movement visibly drops detections until the object settles. The demo shot
-list deliberately includes this rather than avoiding it. Treating this as a
-measured limitation would be overclaiming; it is an observation.
+hand movement visibly drops detections until the object settles. Treating this
+as a measured limitation would be overclaiming; it is an observation. Note that
+a camera at 15 fps in low light also has a longer exposure per frame, so blur
+and low light are not independent problems.
 
-**Low light.** Also unquantified, same reason. The camera's auto-exposure raises
-gain, which adds noise, and noise is not what the model was trained on.
+**Low light.** Also unquantified, same reason — but it is now known to have a
+second-order effect that *is* measured: it halved the camera's frame rate.
 
-**Crowded scenes.** Visible in the numbers: `person` has 93 false positives and
-248 false negatives against 685 instances. NMS at IoU 0.45 cannot separate
+**Crowded scenes.** Visible in the numbers: `person` has 104 false positives and
+255 false negatives against 685 instances. NMS at IoU 0.45 cannot separate
 heavily overlapping instances of the same class — one of two overlapping people
 gets suppressed. Raising the IoU threshold trades this for duplicate boxes.
 
-**Recall generally.** 0.490 micro-average recall at conf 0.30. Roughly half of
+**Recall generally.** 0.483 micro-average recall at conf 0.30. Roughly half of
 all labelled objects are missed at the shipped operating point. Lowering the
 threshold recovers some of that at the cost of on-screen clutter (§5.4).
 
-**Sustained vs burst performance.** The 19.8 FPS headline is a warm, sustained
-figure. The same configuration measures 24–35 FPS on a cold machine. Any FPS
+**Sustained vs burst performance.** All headline figures are warm and sustained.
+The same configuration measures materially higher on a cold machine. Any FPS
 number from this class of hardware that does not say which one it is should be
 treated with suspicion — including the ones I measured before adding `--settle`.
 
 **Subset size.** 300 images is enough for stable aggregate mAP but leaves many
 classes with single-digit support (§5.2). Per-class figures for rare classes are
 not reliable.
+
+**INT8 reproducibility.** The quantised model is built locally, not downloaded,
+so it carries no checksum and is not guaranteed bit-identical across ONNX
+Runtime versions. The calibration inputs are pinned (24 committed images, fixed
+order); the quantisation implementation is not.
 
 **Colour distinctness.** Each of the 80 classes gets a stable unique colour, but
 80 hues on one wheel means some pairs are close — `cup` and `tv` land in similar
@@ -426,35 +532,36 @@ greens. Alternating brightness helps; it does not fully solve it.
 
 ## 7. Further optimisation
 
-Three concrete options, with the reasoning for the expected gain. These are
-**projections, not measurements**, and are labelled as such.
+Three concrete options. These are **projections, not measurements**, and are
+labelled as such. The obvious one — INT8 — has already been done and moved into
+the default, so what remains is genuinely speculative.
 
-**1. Ship INT8 as the default (measured: 2.1×).** This is not a projection —
-it is in §4.1. The only work is deciding whether the build step belongs in the
-setup path or whether a pre-quantised model should be published as a release
-asset with its own checksum. Given the accuracy cost is 2.6 mAP points for
-double the frame rate, this is the highest-value change available.
+**1. A better camera, or more light (measured constraint, not a projection).**
+The single largest limit on live frame rate right now is the sensor delivering
+15 fps. The detector has 38 FPS of capability and 23 of it is going unused. This
+is first on the list because it is the only item here backed by a measurement
+(§3.1), and because it costs nothing to try.
 
-**2. OpenVINO execution provider (expected 1.5–2.5× on top of FP32).** This CPU
-is Tiger Lake with an Iris Xe iGPU sitting completely idle. `onnxruntime-openvino`
-targets both, and Intel's own published figures for this class of CNN on this
-generation are in that range. It is a one-line provider change in
+**2. OpenVINO execution provider (expected 1.3–2× on top of INT8).** This CPU is
+Tiger Lake with an Iris Xe iGPU sitting completely idle. `onnxruntime-openvino`
+targets both and has its own INT8 path. It is a one-line provider change in
 `Detector._build_session` — the architecture already isolates it. Not done here
 because it is an Intel-specific dependency and this project's default has to
-stay platform-neutral, so it would be an opt-in extra rather than the default.
-**Unverified — I have not run it.**
+stay platform-neutral, so it would be an opt-in extra. I would expect a smaller
+multiplier than on FP32, since INT8 has already collected much of the available
+win. **Unverified — I have not run it.**
 
-**3. Move rendering and encoding off the main thread (expected 4–8%).** Render
-plus the MP4 writer is 0.44–2.35 ms of a ~48 ms frame. Moving it to a third
-thread would overlap it with the next frame's inference. The gain is small
-because the pipeline is 93% inference — which is precisely why this is third on
-the list rather than first, and why the two-thread design in the PRD was the
-right starting point. Worth doing only if inference gets much cheaper first
-(i.e. after option 1 or 2), at which point rendering becomes a larger share.
+**3. Move rendering and encoding off the main thread (expected 2–9%).** Render
+plus the MP4 writer is 0.46–2.35 ms of a ~26 ms frame. Moving it to a third
+thread would overlap it with the next frame's inference. This was third on the
+list when the pipeline was 93% inference and FP32; at 87% and INT8 the case is
+slightly stronger, and it becomes stronger still if option 2 lands. Still not
+first, because the numbers say the camera is.
 
 A fourth option deliberately not pursued: a smaller model. YOLOX-Nano would be
 roughly 4× cheaper by parameter count, but its published mAP is 25.8 against
-32.8 for Tiny. Given Tiny already clears the 15 FPS requirement by 32% while
-warm, spending 7 mAP points to buy frame rate nobody asked for is a bad trade.
+32.8 for Tiny. Given INT8 Tiny already clears the 15 FPS requirement by 2.5× at
+the default resolution — and clears it at 512 as well — spending 7 mAP points to
+buy frame rate the camera cannot supply would be a bad trade.
 `models/download_weights.py --model nano` fetches it for anyone whose hardware
 disagrees.

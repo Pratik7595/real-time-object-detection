@@ -29,6 +29,13 @@ def test_repo_config_is_valid():
     assert 0 < cfg.detection.conf_threshold < 1
 
 
+def test_shipped_default_is_the_int8_model():
+    """Documents the decision: INT8 is the default because it measured 1.9x
+    faster for 2.5 mAP points. If this is ever changed back, the performance
+    and accuracy tables in the docs have to change with it."""
+    assert load_config().model.path.name == "yolox_tiny_int8.onnx"
+
+
 def test_missing_named_config_is_an_error(tmp_path):
     with pytest.raises(ConfigError, match="not found"):
         load_config(tmp_path / "nope.yaml")

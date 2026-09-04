@@ -41,7 +41,29 @@ laptop, keyboard, mouse, monitor and cup -- match what the webcam demo shows.
 Most COCO images carry non-commercial licences and are not redistributable here.
 
 
-3. COCO dataset (downloaded, not redistributed)
+3. Bundled INT8 calibration images
+----------------------------------
+    assets/calib/*.jpg  (24 images)
+    COCO val2017 image ids:
+      33368, 62554, 66635, 76416, 77460, 78266, 79651, 94871, 100238,
+      111207, 119233, 127182, 160012, 172877, 192670, 213547, 306893,
+      309655, 315492, 366884, 369751, 377882, 416885, 577932
+    All 24 are licensed under Creative Commons Attribution 2.0 Generic (CC BY 2.0)
+    http://creativecommons.org/licenses/by/2.0/
+    Per-image source URLs and licence records: assets/calib/MANIFEST.json
+
+These define the activation ranges for the INT8 model that models/quantize.py
+builds, which is the default model this project runs. They are committed so a
+clean clone can build that model offline and reproducibly.
+
+Selection is reproducible via scripts/build_calibration_set.py and was
+constrained to images whose COCO licence field is 4, 7 or 8 -- the only ones
+that may be redistributed here. They are also drawn from *outside* the first
+300 val2017 images, which are the evaluation subset, so the quantised model is
+never calibrated on data it is later scored against.
+
+
+4. COCO dataset (downloaded, not redistributed)
 -----------------------------------------------
     Annotations from the COCO 2017 val split, fetched by
     scripts/download_coco_subset.py into data/ (gitignored).
@@ -49,11 +71,11 @@ Most COCO images carry non-commercial licences and are not redistributable here.
     https://cocodataset.org/#termsofuse
     Lin et al., "Microsoft COCO: Common Objects in Context", ECCV 2014.
 
-Nothing from the dataset is committed to this repository apart from the single
-CC BY 2.0 image listed in section 2.
+Nothing from the dataset is committed to this repository apart from the CC BY
+2.0 images listed in sections 2 and 3.
 
 
-4. Python dependencies
+5. Python dependencies
 ----------------------
     onnxruntime    MIT
     opencv-python  Apache-2.0 (OpenCV 4.5+ relicensed from 3-clause BSD)

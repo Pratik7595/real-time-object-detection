@@ -24,15 +24,25 @@ MODELS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = MODELS_DIR.parent
 
 
-def _calibration_images(limit: int) -> list[Path]:
-    """Prefer the COCO subset if it has been downloaded; fall back to assets/."""
-    candidates: list[Path] = []
-    coco_dir = REPO_ROOT / "data" / "coco_subset" / "images"
-    if coco_dir.exists():
-        candidates = sorted(coco_dir.glob("*.jpg"))[:limit]
-    if not candidates:
-        candidates = sorted((REPO_ROOT / "assets").glob("*.jpg"))
-    return candidates
+CALIB_DIR = REPO_ROOT / "assets" / "calib"
+
+
+def _calibration_images(limit: int, directory: Path | None = None) -> list[Path]:
+    """The images whose activation ranges define the INT8 model.
+
+    Defaults to the 24 images committed in assets/calib/, which exist so that a
+    clean clone can build the shipped model offline and get byte-identical
+    results. They were chosen by scripts/build_calibration_set.py under three
+    constraints: redistributable licence, **disjoint from the 300-image
+    evaluation subset**, and greedy class coverage (69 of 80 classes).
+
+    The disjointness matters. An earlier build of this model calibrated on the
+    first 64 images of the evaluation set and scored 0.3312 mAP@0.5:0.95 -- a
+    number that was quietly flattered by having seen its own test data.
+    """
+    if directory is not None:
+        return sorted(directory.glob("*.jpg"))[:limit]
+    return sorted(CALIB_DIR.glob("*.jpg"))[:limit]
 
 
 def build_reader(images: list[Path], input_name: str, size: int):
@@ -75,10 +85,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--src", default=str(MODELS_DIR / "yolox_tiny.onnx"))
     parser.add_argument("--dst", default=None)
-    parser.add_argument("--mode", choices=("dynamic", "static"), default="dynamic")
+    # Static is the default because it is what ships. Dynamic quantises
+    # activations on every inference; for a convolution-heavy net that overhead
+    # can cancel out the cheaper integer maths.
+    parser.add_argument("--mode", choices=("static", "dynamic"), default="static")
     parser.add_argument("--imgsz", type=int, default=416)
     parser.add_argument(
         "--calib-images", type=int, default=64, help="Static mode only."
+    )
+    parser.add_argument(
+        "--calib-dir",
+        default=None,
+        help="Override the bundled calibration images (assets/calib). Pointing "
+        "this at data/coco_subset/images would calibrate on the evaluation set "
+        "and inflate the resulting accuracy figures -- don't.",
     )
     args = parser.parse_args(argv)
 
@@ -114,13 +134,17 @@ def main(argv: list[str] | None = None) -> int:
     else:
         import onnxruntime as ort
 
-        images = _calibration_images(args.calib_images)
+        directory = Path(args.calib_dir) if args.calib_dir else None
+        images = _calibration_images(args.calib_images, directory)
         if not images:
             raise SystemExit(
-                "error: no calibration images found.\n"
-                "  python scripts/download_coco_subset.py --images 300"
+                f"error: no calibration images found in "
+                f"{directory or CALIB_DIR}.\n"
+                f"The bundled set is committed at assets/calib/; if it is "
+                f"missing, rebuild it with:\n"
+                f"  python scripts/build_calibration_set.py --images 24"
             )
-        print(f"calibrating on {len(images)} image(s)")
+        print(f"calibrating on {len(images)} image(s) from {images[0].parent.name}/")
         session = ort.InferenceSession(str(src), providers=["CPUExecutionProvider"])
         reader = build_reader(images, session.get_inputs()[0].name, args.imgsz)
         quantize_static(

@@ -164,10 +164,19 @@ class Detector:
     ) -> None:
         self.model_path = Path(model_path)
         if not self.model_path.exists():
-            raise ModelNotFoundError(
-                f"Model weights not found at {self.model_path}\n"
-                f"Fetch them with:  python models/download_weights.py"
-            )
+            # The INT8 model is built locally rather than downloaded, so the
+            # two cases need different instructions.
+            if "_int8" in self.model_path.stem:
+                hint = (
+                    "This is the quantised model, which is built locally (~8s):\n"
+                    "  python models/download_weights.py    # downloads FP32, then builds it\n"
+                    "  python models/quantize.py            # if you already have the FP32 weights\n"
+                    "Or run the FP32 model directly:\n"
+                    "  python -m src.main --model models/yolox_tiny.onnx"
+                )
+            else:
+                hint = "Fetch them with:  python models/download_weights.py"
+            raise ModelNotFoundError(f"Model weights not found at {self.model_path}\n{hint}")
 
         self.input_h, self.input_w = int(input_size[0]), int(input_size[1])
         if self.input_h % 32 or self.input_w % 32:

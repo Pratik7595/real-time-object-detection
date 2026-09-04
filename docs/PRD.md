@@ -350,7 +350,7 @@ match the results is worth nothing. Numbers in
 | §4.3 The export takes raw 0–255 BGR, no normalisation *(marked "to be confirmed")* | Confirmed empirically — `/255` input yields **zero** detections | **Held.** Locked down by `test_normalisation_would_break_the_model` |
 | R2 The fixed-416 export may block the resolution sweep | The head's Reshape nodes already target `[1, 85, -1]`, so only the declared input dims needed widening. 320/416/512 all produce exactly the predicted anchor counts | **Resolved.** `models/make_dynamic.py`; the sweep runs on model input as originally hoped |
 | §5 A fixed frame count is enough for a fair benchmark | Not on this laptop. Four identical runs drifted 24.3 → 19.4 FPS on thermal throttling alone — **larger than most of the effects being measured** | **Plan was inadequate.** Added `--settle`; small differences re-checked with interleaved A/B |
-| §4.6 INT8 expected "~1.5–2×, with some mAP loss" | **2.1×** (19.8 → 42.1 FPS), −2.6 mAP@0.5:0.95, model 20.2 MB → 5.2 MB | **Held**, at the top of the predicted range |
+| §4.6 INT8 expected "~1.5–2×, with some mAP loss", opt-in | **1.9×** at 416 (19.8 → 38.0 FPS), −2.5 mAP@0.5:0.95, model 20.2 MB → 5.2 MB | **Held**, at the top of the range — and promoted from opt-in to **the shipped default** (see below) |
 | §1 YOLOX-Tiny will clear 15 FPS at 416 | 19.8 FPS sustained, 23.0 live | **Held.** The Nano fallback was never needed |
 | Dependency budget included `tqdm` for download progress bars | Both download scripts print their own progress in three lines | **Dropped.** Five runtime dependencies, not six |
 
@@ -358,3 +358,36 @@ The two things I would tell someone starting this again: the pipeline is 93%
 inference, so optimising anything else is rearranging deck chairs; and on a thin
 laptop, thermal drift is a larger effect than most of the optimisations, so
 measure that before you trust any before/after table.
+
+## 9. Amendment: INT8 promoted to the default
+
+The PRD scoped INT8 as an opt-in extra (§4.6). Once measured it was 1.9× for 2.5
+mAP@0.5:0.95 points, which is a good enough trade on CPU-only hardware that
+leaving it behind a manual step was hard to justify. It is now what
+`config/config.yaml` points at. Three consequences the original plan did not
+anticipate:
+
+**The default model is built, not downloaded.** There is no permissively
+licensed pre-quantised YOLOX ONNX to fetch, so `models/download_weights.py` now
+fetches FP32 and quantises locally (~8 s, no network). That means the default
+model carries **no checksum** — the one guarantee §1 was proud of. FP32 is still
+verified against its pinned SHA-256; the derived model is only as trustworthy as
+the ONNX Runtime that built it. `--no-quantize` opts out.
+
+**Static calibration created a test-set contamination bug, briefly.** The first
+INT8 build calibrated on the first 64 images of `data/coco_subset` — which *is*
+the evaluation set. The model was tuned on data it was then scored against.
+Fixed by `scripts/build_calibration_set.py`, which selects 24 redistributable
+(CC BY 2.0) images from *outside* the evaluation range and commits them to
+`assets/calib/` so the build is offline and reproducible. Measured bias: 0.0004
+mAP@0.5:0.95 — negligible, and it happened to favour the corrected version. The
+size of the error is not the point; it was only knowable after checking.
+
+**The bottleneck moved off the detector entirely.** With inference at ~23 ms the
+webcam became the constraint: measured on its own, with no inference in the
+loop, it delivers **15.0 fps** in evening light against a nominal 30. So the
+live frame rate went *down* (23.0 → 15.0 FPS) while the detector got nearly
+twice as fast. Nothing regressed — the earlier live run simply happened in
+better light. The PRD's §5 measurement plan was right to insist on a
+deterministic file source for the headline numbers; it just did not anticipate
+how quickly the camera would become the thing worth complaining about.

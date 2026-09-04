@@ -1,6 +1,6 @@
 label,model,imgsz,capture,preprocess,ort_threads,cv_threads,infer_every,frames,fps_mean,fps_median,fps_p95,fps_p5,cpu_percent,rss_peak_mb,detections_mean,capture_ms,preprocess_ms,inference_ms,postprocess_ms,render_ms
-ORT default,yolox_tiny.onnx,416,640x480,prealloc,0,2,1,200,19.13,18.94,25.36,16.02,396.6,139.4,10.35,0.031,1.342,48.727,1.697,0.422
-intra_op=1,yolox_tiny.onnx,416,640x480,prealloc,1,2,1,200,13.11,13.13,14.39,11.71,100.2,140.5,10.35,0.023,0.865,73.925,1.126,0.305
-intra_op=2,yolox_tiny.onnx,416,640x480,prealloc,2,2,1,200,16.58,17.02,18.92,13.73,199.4,140.3,10.35,0.03,0.947,57.544,1.402,0.346
-intra_op=4,yolox_tiny.onnx,416,640x480,prealloc,4,2,1,200,20.4,20.49,25.13,16.66,398.0,140.7,10.35,0.035,1.202,45.56,1.733,0.436
-intra_op=8,yolox_tiny.onnx,416,640x480,prealloc,8,2,1,200,19.33,20.48,23.42,13.81,756.7,141.4,10.35,0.044,1.6,46.931,2.482,0.595
+ORT default,yolox_tiny_int8.onnx,416,640x480,prealloc,0,2,1,200,42.58,44.65,47.34,34.77,398.8,108.9,10.35,0.025,1.14,20.325,1.539,0.41
+intra_op=1,yolox_tiny_int8.onnx,416,640x480,prealloc,1,2,1,200,33.3,33.96,35.06,30.08,101.3,110.0,10.35,0.019,0.732,27.947,1.024,0.272
+intra_op=2,yolox_tiny_int8.onnx,416,640x480,prealloc,2,2,1,200,42.11,42.79,43.38,38.81,199.2,109.9,10.35,0.02,0.848,21.323,1.198,0.32
+intra_op=4,yolox_tiny_int8.onnx,416,640x480,prealloc,4,2,1,200,42.79,44.58,47.58,34.66,403.5,108.8,10.35,0.025,1.125,20.258,1.51,0.405
+intra_op=8,yolox_tiny_int8.onnx,416,640x480,prealloc,8,2,1,200,33.08,34.81,37.2,25.51,767.3,110.9,10.35,0.03,1.463,26.014,2.119,0.549

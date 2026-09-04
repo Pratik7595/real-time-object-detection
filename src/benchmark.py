@@ -267,6 +267,25 @@ def sweep_resolutions(args: argparse.Namespace, model: Path) -> list[BenchResult
     return results
 
 
+def _fp32_base(model: Path) -> Path:
+    """The unquantised sibling of `model`, for use as an ablation baseline.
+
+    The shipped default is the INT8 model, but an ablation that starts from the
+    finished article measures nothing. This walks back to the FP32 weights so
+    row A is a genuine "before".
+    """
+    if "_int8" in model.stem:
+        return model.with_name(model.stem.replace("_int8", "") + model.suffix)
+    return model
+
+
+def _fp32_base(model: Path) -> Path:
+    """The unquantised sibling of `model`, used as the ablation's "before"."""
+    if "_int8" in model.stem:
+        return model.with_name(model.stem.replace("_int8", "") + model.suffix)
+    return model
+
+
 def sweep_ablation(args: argparse.Namespace, model: Path) -> list[BenchResult]:
     """Cumulative optimisations: each row adds one change to the row above."""
     # Note on reading this table: rows run in order and the machine heats up as
@@ -274,22 +293,39 @@ def sweep_ablation(args: argparse.Namespace, model: Path) -> list[BenchResult]:
     # an earlier one. --settle bounds that, but for a difference of a few
     # percent (row C) the ordering still matters more than the change does.
     # Anything at that magnitude was re-checked with an interleaved A/B.
+    # The shipped default is INT8, but an ablation that starts from the finished
+    # article measures nothing, so row A walks back to the FP32 weights.
+    fp32 = _fp32_base(model)
+    int8 = fp32.with_name(f"{fp32.stem}_int8.onnx")
+    if not fp32.exists():
+        raise ModelNotFoundError(
+            f"the ablation uses the FP32 weights ({fp32.name}) as its baseline.\n"
+            f"  python models/download_weights.py"
+        )
+
     cases = [
-        # (label, preprocess, ort_threads, cv_threads, infer_every)
-        ("A baseline (naive preprocess, per-frame allocation)", "naive", 0, 0, 1),
-        ("B + preallocated preprocess buffers  [shipped]", "prealloc", 0, 0, 1),
-        ("C + OpenCV capped to 2 threads (rejected)", "prealloc", 0, 2, 1),
-        ("D + --infer-every 2", "prealloc", 0, 0, 2),
+        # (label, model, preprocess, ort_threads, cv_threads, infer_every)
+        ("A baseline FP32 (naive preprocess, per-frame alloc)", fp32, "naive", 0, 0, 1),
+        ("B + preallocated preprocess buffers", fp32, "prealloc", 0, 0, 1),
+        ("C + OpenCV capped to 2 threads (rejected)", fp32, "prealloc", 0, 2, 1),
     ]
+    if int8.exists():
+        cases.append(("D + INT8 quantisation  [shipped]", int8, "prealloc", 0, 0, 1))
+        cases.append(("E + --infer-every 2", int8, "prealloc", 0, 0, 2))
+    else:
+        print(f"note: {int8.name} not found - skipping the INT8 rows.")
+        print("      build it with: python models/quantize.py")
+        cases.append(("D + --infer-every 2 (FP32)", fp32, "prealloc", 0, 0, 2))
+
     results = []
-    for label, pre, ort_t, cv_t, every in cases:
+    for label, model_path, pre, ort_t, cv_t, every in cases:
         results.append(
             run_case(
                 label=label,
                 source=args.source,
                 frames=args.frames,
                 warmup=args.warmup,
-                model_path=model,
+                model_path=model_path,
                 imgsz=args.imgsz,
                 preprocess_mode=pre,
                 ort_threads=ort_t,
@@ -298,25 +334,6 @@ def sweep_ablation(args: argparse.Namespace, model: Path) -> list[BenchResult]:
                 conf=args.conf,
             )
         )
-
-    int8 = model.with_name(f"{model.stem}_int8.onnx")
-    if int8.exists():
-        results.append(
-            run_case(
-                # Deliberately not naming the quantisation mode: quantize.py can
-                # emit either dynamic or static INT8 into the same filename.
-                label="E + INT8 quantisation (models/quantize.py)",
-                source=args.source,
-                frames=args.frames,
-                warmup=args.warmup,
-                model_path=int8,
-                imgsz=args.imgsz,
-                conf=args.conf,
-            )
-        )
-    else:
-        print(f"note: {int8.name} not found - skipping the INT8 row.")
-        print("      build it with: python models/quantize.py")
     return results
 
 

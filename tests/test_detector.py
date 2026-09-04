@@ -15,11 +15,16 @@ from src.config import REPO_ROOT
 from src.detector import Detection, Detector, ModelNotFoundError
 
 MODEL_PATH = REPO_ROOT / "models" / "yolox_tiny.onnx"
+INT8_PATH = REPO_ROOT / "models" / "yolox_tiny_int8.onnx"
 SAMPLE_PATH = REPO_ROOT / "assets" / "sample.jpg"
 
 needs_model = pytest.mark.skipif(
     not MODEL_PATH.exists(),
     reason="weights absent - run: python models/download_weights.py",
+)
+needs_int8 = pytest.mark.skipif(
+    not INT8_PATH.exists(),
+    reason="INT8 model absent - run: python models/quantize.py",
 )
 
 
@@ -38,6 +43,29 @@ def sample() -> np.ndarray:
 def test_missing_weights_raise_a_useful_error(tmp_path):
     with pytest.raises(ModelNotFoundError, match="download_weights"):
         Detector(tmp_path / "absent.onnx")
+
+
+def test_missing_int8_model_explains_that_it_is_built_locally(tmp_path):
+    """The INT8 model is the shipped default but is not downloadable, so its
+    error has to point at the build step, not at the download script alone."""
+    with pytest.raises(ModelNotFoundError, match="quantize.py") as exc:
+        Detector(tmp_path / "yolox_tiny_int8.onnx")
+    assert "yolox_tiny.onnx" in str(exc.value), "should offer the FP32 fallback"
+
+
+@needs_int8
+def test_int8_model_detects_the_same_scene(sample):
+    """Quantisation costs accuracy but must not break the pipeline: the same
+    obvious objects should still be found in the bundled sample."""
+    quantised = Detector(INT8_PATH, conf_threshold=0.30)
+    found = {d.class_name for d in quantised.detect(sample)}
+    for expected in ("laptop", "keyboard", "tv"):
+        assert expected in found, f"expected {expected}, got {sorted(found)}"
+
+
+@needs_int8
+def test_int8_model_is_substantially_smaller():
+    assert INT8_PATH.stat().st_size < 0.5 * MODEL_PATH.stat().st_size
 
 
 @needs_model

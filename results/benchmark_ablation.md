@@ -11,18 +11,18 @@ ort      : 1.29.0
 
 | Config | Model | imgsz | Capture | FPS mean | FPS median | FPS p95 | FPS p5 | Infer ms | Total ms | CPU % | Peak RSS MB | Dets/frame |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A baseline (naive preprocess, per-frame allocation) | yolox_tiny.onnx | 416 | 640x480 | 19.2 | 19.1 | 24.3 | 15.7 | 46.3 | 51.9 | 399 | 142 | 9.90 |
-| B + preallocated preprocess buffers  [shipped] | yolox_tiny.onnx | 416 | 640x480 | 20.9 | 21.5 | 25.8 | 16.6 | 44.6 | 47.7 | 400 | 140 | 9.90 |
-| C + OpenCV capped to 2 threads (rejected) | yolox_tiny.onnx | 416 | 640x480 | 19.4 | 19.5 | 25.0 | 15.3 | 48.0 | 51.5 | 396 | 142 | 9.90 |
-| D + --infer-every 2 | yolox_tiny.onnx | 416 | 640x480 | 40.6 | n/a | n/a | n/a | 22.6 | 24.6 | 400 | 141 | 9.90 |
-| E + INT8 quantisation (models/quantize.py) | yolox_tiny_int8.onnx | 416 | 640x480 | 42.1 | 43.0 | 48.6 | 34.5 | 20.7 | 23.7 | 400 | 111 | 9.90 |
+| A baseline FP32 (naive preprocess, per-frame alloc) | yolox_tiny.onnx | 416 | 640x480 | 20.1 | 20.6 | 23.7 | 15.9 | 44.0 | 49.7 | 399 | 144 | 9.90 |
+| B + preallocated preprocess buffers | yolox_tiny.onnx | 416 | 640x480 | 21.6 | 22.8 | 24.8 | 16.4 | 43.2 | 46.3 | 399 | 141 | 9.90 |
+| C + OpenCV capped to 2 threads (rejected) | yolox_tiny.onnx | 416 | 640x480 | 22.1 | 22.9 | 25.9 | 17.2 | 41.9 | 45.2 | 399 | 141 | 9.90 |
+| D + INT8 quantisation  [shipped] | yolox_tiny_int8.onnx | 416 | 640x480 | 43.2 | 45.0 | 47.6 | 35.4 | 20.1 | 23.1 | 401 | 112 | 9.90 |
+| E + --infer-every 2 | yolox_tiny_int8.onnx | 416 | 640x480 | 85.3 | n/a | n/a | n/a | 9.9 | 11.7 | 401 | 112 | 9.90 |
 
 > `n/a`: with `--infer-every > 1` the per-frame time is bimodal, so median/p95 of per-frame FPS are meaningless. Mean is throughput (frames / wall clock) and is still valid. Note also that inference ms is the average over *all* frames, including the skipped ones.
 
 | Config | capture ms | preprocess ms | inference ms | postprocess ms | render ms | total ms |
 |---|---|---|---|---|---|---|
-| A baseline (naive preprocess, per-frame allocation) | 0.03 | 3.42 | 46.33 | 1.69 | 0.42 | 51.89 |
-| B + preallocated preprocess buffers  [shipped] | 0.03 | 1.01 | 44.64 | 1.62 | 0.42 | 47.72 |
-| C + OpenCV capped to 2 threads (rejected) | 0.04 | 1.24 | 48.01 | 1.79 | 0.46 | 51.53 |
-| D + --infer-every 2 | 0.02 | 0.61 | 22.63 | 0.86 | 0.47 | 24.60 |
-| E + INT8 quantisation (models/quantize.py) | 0.03 | 1.12 | 20.68 | 1.48 | 0.41 | 23.72 |
+| A baseline FP32 (naive preprocess, per-frame alloc) | 0.03 | 3.53 | 43.97 | 1.75 | 0.44 | 49.71 |
+| B + preallocated preprocess buffers | 0.03 | 1.04 | 43.17 | 1.61 | 0.44 | 46.28 |
+| C + OpenCV capped to 2 threads (rejected) | 0.03 | 1.19 | 41.90 | 1.69 | 0.43 | 45.22 |
+| D + INT8 quantisation  [shipped] | 0.03 | 1.14 | 20.06 | 1.48 | 0.40 | 23.10 |
+| E + --infer-every 2 | 0.02 | 0.56 | 9.94 | 0.73 | 0.43 | 11.69 |

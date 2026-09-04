@@ -3,7 +3,14 @@
 
 model:
   # Relative to the repository root. Resolved with pathlib, never absolute.
-  path: models/yolox_tiny.onnx
+  #
+  # INT8 is the default because it was measured to be worth it: 1.9x the
+  # throughput of FP32 (19.8 -> 38.0 FPS at 416) for 2.5 mAP@0.5:0.95 points, in a
+  # quarter of the disk space. It is built locally in ~8s by
+  # models/download_weights.py, calibrated on the 24 images in assets/calib.
+  # For maximum accuracy instead, use models/yolox_tiny.onnx -- both are
+  # produced by the same setup command.
+  path: models/yolox_tiny_int8.onnx
   # [height, width] fed to the network. The stock YOLOX release is exported at
   # 416x416; other sizes need models/make_dynamic.py first (see README).
   input_size: [416, 416]

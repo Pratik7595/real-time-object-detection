@@ -2,11 +2,13 @@
 
 Real-time object detection on a webcam, running on the CPU. It uses YOLOX-Tiny
 through ONNX Runtime, detects all 80 COCO classes, draws boxes with confidence
-scores, and sustains **19.8 FPS at 416×416 on an Intel i5-1135G7 with no GPU** —
-or **42.1 FPS** with the INT8 model. There is no PyTorch dependency and no CUDA
-requirement: `pip install -r requirements.txt` is about 40 MB of wheels and the
-same command on x86_64 and ARM64. Everything also runs from a video file or a
-still image, so it is demonstrable on a machine with no camera.
+scores, and sustains **38.0 FPS at 416×416 on an Intel i5-1135G7 with no GPU**.
+The default model is INT8-quantised, which measured 1.9× faster than FP32 for
+2.5 mAP points and is built locally in about 8 seconds during setup. There is no
+PyTorch dependency and no CUDA requirement: `pip install -r requirements.txt` is
+about 40 MB of wheels and the same command on x86_64 and ARM64. Everything also
+runs from a video file or a still image, so it is demonstrable on a machine with
+no camera.
 
 ![Detection output](results/sample_detection.png)
 
@@ -22,11 +24,13 @@ exact commands.
 
 ## Features
 
+- **INT8 by default.** Quantisation is a measured 1.9× on this CPU, not a
+  guess — the FP32 model is one flag away if you want the accuracy back.
 - **Threaded capture with a drop-stale buffer.** The capture thread keeps only
   the newest frame. If inference falls behind, frames are dropped rather than
   queued, so display latency stays bounded instead of drifting further behind
-  reality every second. Measured cost of the capture stage on a live 30 fps
-  camera: **0.11 ms**.
+  reality every second. Measured cost of the capture stage while the camera was
+  outrunning the detector: **0.11 ms**.
 - **All 80 COCO classes**, with a `--classes` filter that accepts names or
   indices.
 - **Confidence on every box**, to two decimals, on a filled chip whose text
@@ -95,6 +99,12 @@ If OpenCV complains about a missing `libGL.so.1`, install it:
 `sudo apt install -y libgl1 libglib2.0-0`.
 </details>
 
+`download_weights.py` does two things: it fetches the FP32 weights (20 MB,
+SHA-256 verified) and then builds the INT8 model that `config/config.yaml`
+points at. The quantisation step takes about 8 seconds, needs no network, and
+calibrates on the 24 images committed in `assets/calib/`. Pass `--no-quantize`
+to skip it and run FP32 with `--model models/yolox_tiny.onnx`.
+
 Then, on any platform:
 
 ```bash
@@ -123,8 +133,9 @@ python -m src.main --source assets/sample.jpg
 python -m src.main --classes person laptop "cell phone"
 python -m src.main --classes 0 63 67
 
-# Trade accuracy for speed (needs the variable-input model, see below)
-python -m src.main --imgsz 320
+# Trade accuracy for speed. Needs the variable-input model built once:
+#   python models/make_dynamic.py --src models/yolox_tiny_int8.onnx
+python -m src.main --model models/yolox_tiny_int8_dynamic.onnx --imgsz 320
 
 # Twice the frame rate by detecting on every other frame.
 # The HUD marks boxes as reused while this is on.
@@ -169,15 +180,18 @@ python scripts/download_coco_subset.py --images 300
 python -m src.evaluate
 ```
 
-### Optional: faster and smaller
+### Switching models
 
 ```bash
-# Variable-resolution copy of the model, needed for --imgsz other than 416
-python models/make_dynamic.py
+# FP32 instead of the default INT8: +2.5 mAP@0.5:0.95, roughly half the speed
+python -m src.main --model models/yolox_tiny.onnx
 
-# INT8 quantisation: 2.1x faster, 5.2 MB instead of 20.2 MB, -2.6 mAP
-python models/quantize.py --mode static
-python -m src.main --model models/yolox_tiny_int8.onnx
+# Rebuild the INT8 model by hand (download_weights.py already did this)
+python models/quantize.py
+
+# Variable-resolution copy, needed for --imgsz other than 416.
+# benchmark.py builds this on demand; you only need it for src.main.
+python models/make_dynamic.py --src models/yolox_tiny_int8.onnx
 ```
 
 ## Model choice
@@ -215,40 +229,71 @@ framework.
 [YOLOX 0.1.1rc0 release](https://github.com/Megvii-BaseDetection/YOLOX/releases/tag/0.1.1rc0)
 and verified against a pinned SHA-256. See [NOTICE](NOTICE) for full attribution.
 
+**On the INT8 default.** Quantisation is static, calibrated on 24 images in
+`assets/calib/`. Those images are deliberately drawn from *outside* the 300
+images used for evaluation — calibrating on the data you later score against
+inflates the result. (An earlier build of this project made exactly that
+mistake; the corrected figure differs by 0.0004 mAP, but the method matters more
+than the size of the error.) There is no checksum for the INT8 file because it
+is built locally, and the build is not guaranteed bit-identical across ONNX
+Runtime versions.
+
 ## Performance
 
 Measured on Intel i5-1135G7 (4C/8T, 15 W), 8 GB RAM, Windows 11, **CPU only, no
 GPU**. 300 frames per configuration after a 30-frame warm-up and a 25-second
 thermal settle. Reproduce with `python -m src.benchmark`.
 
+INT8, the shipped default:
+
 | Model input | Device | FPS mean | FPS median | FPS p95 | Inference ms | Frame ms | Peak RSS |
 |---|---|---|---|---|---|---|---|
-| 320×320 | CPU | 32.4 | 33.0 | 42.4 | 28.8 | 30.8 | 129 MB |
-| **416×416** (default) | CPU | **19.8** | 19.8 | 25.4 | 47.1 | 50.5 | 142 MB |
-| 512×512 | CPU | 13.2 | 13.1 | 17.1 | 71.8 | 76.0 | 166 MB |
-| 416×416 **INT8** | CPU | **42.1** | 43.0 | 48.6 | 20.7 | 23.7 | 111 MB |
+| 320×320 | CPU | 53.7 | 54.4 | 66.3 | 16.3 | 18.6 | 105 MB |
+| **416×416** (default) | CPU | **38.0** | 38.4 | 46.0 | 22.9 | 26.3 | 112 MB |
+| 512×512 | CPU | 27.6 | 27.9 | 32.7 | 31.6 | 36.2 | 121 MB |
 
-**The >15 FPS requirement is met at 320, 416 and INT8, and missed at 512.** Live
-webcam at 416 measures 23.0 FPS mean.
+FP32, for comparison — same command with `--model models/yolox_tiny.onnx`:
 
-Where the time goes at 416 — **inference is 93% of the frame**:
+| Model input | FPS mean | Inference ms | Peak RSS |
+|---|---|---|---|
+| 320×320 | 32.4 | 28.8 | 129 MB |
+| 416×416 | 19.8 | 47.1 | 142 MB |
+| 512×512 | 13.2 | 71.8 | 166 MB |
+
+**The >15 FPS requirement is met at every INT8 resolution**, with 2.5× headroom
+at the default. FP32 clears it at 320 and 416 but misses at 512 (13.2).
+
+Where the time goes at 416 INT8 — **inference is still 87% of the frame**:
 
 | capture | preprocess | inference | postprocess | render |
 |---|---|---|---|---|
-| 0.03 ms | 1.20 ms | 47.11 ms | 1.72 ms | 0.44 ms |
+| 0.03 ms | 1.22 ms | 22.85 ms | 1.71 ms | 0.46 ms |
 
 Accuracy, on **COCO val2017, first 300 labelled images — not webcam footage**:
 
-| Metric | FP32 | INT8 |
+| Metric | INT8 (default) | FP32 |
 |---|---|---|
-| mAP@0.5 | 0.5326 | 0.5226 |
-| mAP@0.5:0.95 | 0.3568 | 0.3312 |
-| Precision / Recall / F1 @ conf 0.30 | 0.694 / 0.490 / 0.574 | 0.680 / 0.480 / 0.562 |
+| mAP@0.5 | 0.5183 | **0.5326** |
+| mAP@0.5:0.95 | 0.3316 | **0.3568** |
+| Precision / Recall / F1 @ conf 0.30 | 0.673 / 0.483 / 0.562 | 0.694 / 0.490 / 0.574 |
 
-One caveat worth reading before trusting any FPS number from a laptop: **this
-machine throttles**. Four identical back-to-back runs measured 24.3, 21.0, 20.4
-and 19.4 FPS with nothing changed but time. The figures above are the sustained
-ones. Full detail, the per-optimisation before/after table, the per-class
+**The trade: INT8 costs 2.5 mAP@0.5:0.95 points (7.1% relative) and buys 1.9×
+the frame rate at 416.** That is the reason it is the default; use
+`--model models/yolox_tiny.onnx` if you would rather have the accuracy.
+
+Two caveats worth reading before trusting any FPS number from a laptop:
+
+- **This machine throttles.** Four identical back-to-back runs measured 24.3,
+  21.0, 20.4 and 19.4 FPS with nothing changed but time. All figures above are
+  the sustained ones, taken after a deliberate thermal settle.
+- **Live FPS is capped by your camera, not by the detector.** Now that inference
+  costs ~23 ms, this webcam is the bottleneck: measured on its own with no
+  inference at all, it delivers **15.0 fps** in the light it had that evening
+  (and ~30 fps earlier in the day). A live run therefore tells you about your
+  camera and your lighting as much as about this code, which is why
+  `benchmark.py` defaults to a deterministic file source.
+
+Full detail, the per-optimisation before/after table, the per-class
 precision/recall breakdown and the limitations are in
 **[docs/PERFORMANCE_ANALYSIS.md](docs/PERFORMANCE_ANALYSIS.md)**.
 
@@ -259,16 +304,18 @@ them with indices.
 
 **Verified against ground truth.** The following 20 classes were confirmed
 detecting on the 300-image labelled COCO subset, with the true-positive count at
-`conf=0.30`, `IoU=0.50` from `python -m src.evaluate`. Full 60-row table in
-[`results/accuracy_fp32.csv`](results/accuracy_fp32.csv):
+`conf=0.30`, `IoU=0.50` from `python -m src.evaluate` **using the shipped INT8
+model**. Full 60-row table in
+[`results/accuracy_int8.csv`](results/accuracy_int8.csv) (FP32 equivalent in
+[`results/accuracy_fp32.csv`](results/accuracy_fp32.csv)):
 
 | Class | TP | | Class | TP | | Class | TP | | Class | TP |
 |---|---|---|---|---|---|---|---|---|---|---|
-| person | 437 | | chair | 45 | | car | 38 | | cup | 29 |
-| dining table | 24 | | bowl | 21 | | bottle | 19 | | laptop | 15 |
-| motorcycle | 15 | | bus | 15 | | tv | 14 | | wine glass | 14 |
-| zebra | 13 | | horse | 12 | | sheep | 12 | | tie | 12 |
-| book | 11 | | couch | 11 | | pizza | 11 | | elephant | 11 |
+| person | 430 | | chair | 43 | | car | 37 | | cup | 28 |
+| dining table | 26 | | bowl | 20 | | bottle | 19 | | laptop | 15 |
+| bus | 15 | | pizza | 14 | | zebra | 13 | | wine glass | 13 |
+| tv | 13 | | motorcycle | 13 | | book | 12 | | tie | 11 |
+| horse | 11 | | elephant | 11 | | couch | 11 | | suitcase | 10 |
 
 **Live camera observations, stated separately.** In live testing the only class
 present in front of the camera was `person` — 411 detections across 400
@@ -299,9 +346,12 @@ real-time-object-detection/
 │   ├── make_dynamic.py     Relax the fixed 416 input
 │   └── quantize.py         Optional INT8
 ├── scripts/
-│   └── download_coco_subset.py
-├── tests/                  63 tests, no GPU or camera required
-├── assets/sample.jpg       CC BY 2.0, bundled for demos and tests
+│   ├── download_coco_subset.py
+│   └── build_calibration_set.py
+├── tests/                  67 tests, no GPU or camera required
+├── assets/
+│   ├── sample.jpg          CC BY 2.0, bundled for demos and tests
+│   └── calib/              24 CC BY 2.0 images for INT8 calibration
 ├── results/                Committed measurement output
 └── docs/
     ├── PRD.md              Design decisions and the model comparison
@@ -331,7 +381,8 @@ AVFoundation on macOS, V4L2 on Linux) and always falls back to `cv2.CAP_ANY`.
 
 I have one x86_64 Windows laptop, so anything other than the first row is "the
 wheels exist", not "I ran it". Expect roughly 3–6× lower frame rates on a
-Raspberry Pi 4; use `--imgsz 320` and the INT8 model there.
+Raspberry Pi 4; the INT8 default already helps there, and `--imgsz 320` is the
+next lever.
 
 ## Testing
 
@@ -340,7 +391,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-63 tests, ~5 seconds, no camera and no GPU needed. They cover NMS geometry
+67 tests, ~5 seconds, no camera and no GPU needed. They cover NMS geometry
 (including that per-class suppression keeps a person standing in front of a TV),
 detector output shape and bounds, config validation and CLI precedence, file and
 image sources, error paths for missing/corrupt files, and end-to-end inference on
@@ -373,14 +424,20 @@ The device opened but delivered nothing. Almost always another app holding it,
 or a virtual camera driver (OBS, ManyCam) that is installed but not running.
 
 **Low FPS**
-In this order:
-1. `python -m src.benchmark` to find out where the time actually goes.
-2. `--imgsz 320` — measured 32.4 FPS versus 19.8 at 416.
-3. `python models/quantize.py --mode static` then
-   `--model models/yolox_tiny_int8.onnx` — measured 42.1 FPS.
-4. `--infer-every 2` — roughly doubles throughput by detecting on every other
+First, check whether it is actually the detector. If the HUD's `capture` time is
+large, you are camera-bound and nothing in this list will help — a webcam in dim
+light commonly halves its own frame rate. Add light, or measure the detector on
+its own with `python -m src.benchmark`.
+
+If it really is inference:
+1. Confirm you are on the INT8 model. `python -m src.main` prints the model name
+   at startup; it should say `yolox_tiny_int8.onnx`. If it says
+   `yolox_tiny.onnx` you are running FP32 at roughly half the speed.
+2. `--imgsz 320` — measured 53.7 FPS versus 38.0 at 416 (needs
+   `python models/make_dynamic.py --src models/yolox_tiny_int8.onnx` once).
+3. `--infer-every 2` — roughly doubles throughput by detecting on every other
    frame. The HUD marks boxes as reused while this is on.
-5. `python models/download_weights.py --model nano` for a much smaller model
+4. `python models/download_weights.py --model nano` for a much smaller model
    (published 25.8 mAP against 32.8).
 
 Also check nothing else is using the CPU. A benchmark run against a background
@@ -388,8 +445,16 @@ compile measured 15.3 FPS where an idle machine measured 25.6 — I did this to
 myself while building this project and had to throw the numbers away.
 
 **`--imgsz` other than 416 fails**
-The released YOLOX export has a hard-coded 416×416 input. Run
-`python models/make_dynamic.py` once; the error message says so too.
+The released YOLOX export has a hard-coded 416×416 input, and quantising it
+preserves that. Run `python models/make_dynamic.py --src models/yolox_tiny_int8.onnx`
+once, then `--model models/yolox_tiny_int8_dynamic.onnx`. The error message says
+so too. `benchmark.py` handles this on its own.
+
+**"Model weights not found ... yolox_tiny_int8.onnx"**
+The default model is built locally rather than downloaded, so a clone that only
+fetched weights with `--no-quantize` will not have it. Either
+`python models/quantize.py`, or run FP32 with
+`--model models/yolox_tiny.onnx`.
 
 **`pip install pycocotools` fails**
 Only needed for `src/evaluate.py`, which is why it is in `requirements-dev.txt`
@@ -407,8 +472,12 @@ Code in this repository: **MIT** — see [LICENSE](LICENSE).
 
 Model weights: **Apache-2.0**, © Megvii Inc., from the
 [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) project. Not committed
-here; fetched and checksum-verified by `models/download_weights.py`.
+here; fetched and checksum-verified by `models/download_weights.py`. The INT8
+model is derived from them locally and inherits the same licence.
 
-Bundled sample image: **CC BY 2.0**, from COCO val2017 (image id 340894).
+Bundled images: **CC BY 2.0**, from COCO val2017 — `assets/sample.jpg`
+(image id 340894) and the 24 calibration images in `assets/calib/`
+(ids listed in [NOTICE](NOTICE), per-image records in
+`assets/calib/MANIFEST.json`).
 
 Full attribution for all third-party material is in [NOTICE](NOTICE).
