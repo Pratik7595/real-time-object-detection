@@ -50,14 +50,19 @@ with an object.
 ## 3. Record it
 
 ```bash
-python -m src.main --source 0 --record results/demo_raw.mp4 --max-frames 1350
+python -m src.main --source 0 --record results/demo.mp4 --max-frames 702
 ```
 
 Notes on that command:
 
-- `--max-frames 1350` is a stop-watch: at the ~30 fps the camera delivers, that
-  is roughly 45 seconds. Adjust if your camera runs slower. You can also just
-  press `q` when you are done.
+- `--max-frames 702` is a stop-watch, sized from a measured test take on this
+  machine: the camera delivered **15.6 fps**, so 45 s ≈ 702 frames. **Check
+  your own rate first** — run `python -m src.main --source 0 --max-frames 150`
+  and read the `fps mean` line, then use `rate × 45`. A camera's nominal 30 fps
+  halves in dim light, and sizing this from the nominal figure gives you a
+  22-second clip that stops in the middle of your shot list.
+- You can ignore the frame count entirely and just press `q` when you are done.
+  That is the safer option for a first take.
 - The frame rate written into the file is **measured**, not assumed. The writer
   stays closed for the first 30 frames while the rolling FPS settles, then opens
   at that rate, so the clip plays back at real speed instead of the
@@ -74,15 +79,38 @@ python -m src.main --source 0 --record results/demo_raw.mp4 \
   --classes person cup bottle laptop keyboard mouse "cell phone" book scissors
 ```
 
-## 4. Compress it under 25 MB
+## 4. Compress it — probably not needed
 
-`--record` writes mp4v, which is what every stock OpenCV wheel can encode. It is
-not efficient. One ffmpeg pass to H.264 typically takes a ~45 s 640×480 clip from
-roughly 40–60 MB down to 3–6 MB:
+**Measured on this machine, compression is unnecessary.** A test take wrote
+0.308 MB per second of video at 640×480, which projects to:
+
+| Take length | Projected size | Under the 25 MB target? |
+|---|---|---|
+| 40 s | ~12.3 MB | yes |
+| 45 s | ~13.8 MB | yes |
+| 50 s | ~15.4 MB | yes |
+
+So `results/demo.mp4` can go straight to the release asset with no ffmpeg step,
+which is convenient because ffmpeg is not installed here. Check the size the
+tool prints at the end of the run before assuming it holds for your take — a
+busier scene compresses worse.
+
+Note also that recording costs frame rate: the `render` stage went from 0.26 ms
+to 7.65 ms with the writer active on live camera frames, taking the run from
+15.0 to 14.1 FPS. The counter in your clip will read slightly lower than the
+same setup not recording. That is honest and worth leaving alone rather than
+hiding.
+
+### If you do need to compress
+
+One ffmpeg pass to H.264, which is far more efficient than the mp4v that stock
+OpenCV wheels can write:
 
 ```bash
-ffmpeg -i results/demo_raw.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -an results/demo.mp4
+ffmpeg -i results/demo.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -an results/demo_small.mp4
 ```
+
+Upload `demo_small.mp4` in that case.
 
 - `-crf 26` is the quality knob: lower is better and bigger. 23 is visually
   transparent; 28 starts to smear the text on the labels. If the result is still
@@ -90,12 +118,6 @@ ffmpeg -i results/demo_raw.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420
 - `-pix_fmt yuv420p` is not optional if you want the file to play in browsers,
   Slack previews and QuickTime.
 - `-an` drops the (non-existent) audio track and stops some players complaining.
-
-Check the size:
-
-```bash
-ls -lh results/demo.mp4
-```
 
 **ffmpeg is not installed by default.** Install it with whichever applies:
 
@@ -105,8 +127,9 @@ brew install ffmpeg                 # macOS
 sudo apt install ffmpeg             # Debian/Ubuntu
 ```
 
-If you would rather not install it, record at a lower resolution instead — a
-45 s clip at 480×360 usually lands under 25 MB straight out of `--record`:
+If you would rather not install it and your take really did come out oversized,
+record the next one smaller instead — `--width 480 --height 360` roughly halves
+the byte rate:
 
 ```bash
 python -m src.main --source 0 --width 480 --height 360 --record results/demo.mp4

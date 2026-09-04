@@ -215,11 +215,28 @@ Three conclusions:
 
 ### 3.2 Cost of `--record`
 
-Enabling the MP4 writer moves the `render` stage from 0.44 ms to 2.35 ms — about
-**1.9 ms per frame, roughly 4%** on FP32 and ~7% on the faster INT8 pipeline.
+The MP4 writer's cost depends heavily on what is being encoded, so a single
+number would be misleading:
+
+| Source | render, no recording | render, recording | Delta |
+|---|---|---|---|
+| `assets/sample.jpg` looped (static) | 0.44 ms | 2.35 ms | +1.9 ms |
+| Live camera (real sensor noise) | 0.26 ms | **7.65 ms** | **+7.4 ms** |
+
+The static image compresses almost for free — consecutive frames are identical,
+so there is nearly nothing for the codec to encode. Live frames carry sensor
+noise in every pixel, and mp4v (all a stock OpenCV wheel can write) is not
+efficient about it. On the live camera that took a recording run from 15.0 to
+**14.1 FPS**, so the FPS counter visible in the demo video reads slightly lower
+than the same setup not recording.
+
 There is also a one-off ~20 ms stall on the frame where the writer opens (codec
-initialisation), which is why the first measurement of this looked like a 25%
+initialisation), which is why an early measurement of this looked like a 25%
 penalty until the writer was forced open from frame 0 to isolate it.
+
+Byte rate measured on a live take: **0.308 MB/s** at 640×480, i.e. ~13.8 MB for
+a 45-second clip — comfortably inside the 25 MB deliverable target with no
+ffmpeg pass at all.
 
 ---
 
