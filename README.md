@@ -16,12 +16,8 @@ no camera.
 This is `assets/sample.jpg`, a CC BY 2.0 image bundled with the repo — reproduce
 it with `python -m src.main --source assets/sample.jpg`.*
 
-**Demo video:** [45 s of live webcam detection, FPS counter visible throughout](DEMO_VIDEO_URL)
-(MP4, hosted as a release asset).
-
-<!-- Replace DEMO_VIDEO_URL above with the release download link, which looks
-     like https://github.com/Pratik7595/real-time-object-detection/releases/download/v1.0/demo.mp4
-     docs/DEMO_SHOTLIST.md section 5 has the steps. -->
+**Demo video:** [43 s of live webcam detection, FPS counter visible throughout](https://github.com/Pratik7595/real-time-object-detection/releases/download/v1.0/demo.mp4)
+(MP4, 4.3 MB, hosted as a release asset).
 
 Produced by the tool's own `--record` flag rather than by screen-capture
 software, so the frame rate shown in the clip is the frame rate that was
