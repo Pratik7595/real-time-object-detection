@@ -16,6 +16,9 @@ no camera.
 This is `assets/sample.jpg`, a CC BY 2.0 image bundled with the repo — reproduce
 it with `python -m src.main --source assets/sample.jpg`.*
 
+**New here?** [SUBMISSION.md](SUBMISSION.md) maps the three deliverables to the
+files that hold them, with the exact commands to run each one.
+
 **Demo video:** [43 s of live webcam detection, FPS counter visible throughout](https://github.com/Pratik7595/real-time-object-detection/releases/download/v1.0/demo.mp4)
 (MP4, 4.3 MB, hosted as a release asset).
 
