@@ -112,9 +112,45 @@ If you would rather not install it, record at a lower resolution instead — a
 python -m src.main --source 0 --width 480 --height 360 --record results/demo.mp4
 ```
 
-## 5. Publish
+## 5. Publish it as an inline player
 
 The video is gitignored on purpose (`*.mp4`) — binaries do not belong in a git
-history. Upload `results/demo.mp4` to the GitHub release page, a repository
-issue, or YouTube/Drive, and put the link in the README where it says
-`DEMO_VIDEO_URL`.
+history. Host it as a GitHub attachment instead, which gets you a URL that
+renders as a **playable video inside the README** rather than a download link.
+
+1. Push the repo to GitHub if you have not already.
+2. Open a new issue on it: `https://github.com/<you>/real-time-object-detection/issues/new`.
+   Title it anything — `demo video asset` will do.
+3. Drag `results/demo.mp4` into the comment box. Wait for the upload to finish;
+   the box fills with a URL of the form
+   `https://github.com/user-attachments/assets/<uuid>`.
+4. **Submit the issue**, then copy the URL out of the posted comment. Do not
+   just copy it from the draft box and navigate away — attach the file to a
+   comment that actually exists. You can close the issue immediately
+   afterwards; the attachment stays reachable.
+5. In `README.md`, replace the line that reads `DEMO_VIDEO_URL` with that URL,
+   bare, on its own line with blank lines either side. Do not wrap it in
+   markdown link syntax — a bare URL is what triggers the player.
+6. Commit, push, and **look at the rendered README on github.com**.
+
+Two things to check on that rendered page, because neither is visible locally:
+
+- **Does it render as a player?** A bare attachment URL normally does. If you
+  get a plain link instead, swap it for an explicit tag, which GitHub also
+  accepts in markdown files:
+  ```html
+  <video src="https://github.com/user-attachments/assets/<uuid>" controls></video>
+  ```
+- **Does it work logged out?** Open the README in a private window. A link that
+  only resolves while you are signed into your own account is the most common
+  way a submission's demo silently fails, and you cannot detect it from your own
+  browser session.
+
+GitHub's per-file attachment limit is comfortably above the 25 MB target from
+section 4, but check the figure at upload time rather than trusting a number
+written here — if the upload is rejected, compress harder with a higher `-crf`.
+
+If you would rather not depend on attachments at all, a release asset
+(`Releases → Draft a new release → attach demo.mp4`) is the more permanent
+option; it downloads rather than plays inline, and the README line then becomes
+an ordinary markdown link.
