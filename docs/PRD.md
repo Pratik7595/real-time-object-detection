@@ -335,4 +335,26 @@ the "permissively licensed" constraint drops. Tell me which way and I will build
 
 ---
 
-**Phase 1 ends here. No code until you reply "approved" or send changes.**
+---
+
+## 8. Postscript: what the measurements changed
+
+Approved as written, with YOLOX-Tiny. This section records where the plan above
+turned out to be wrong, because a design document that gets quietly edited to
+match the results is worth nothing. Numbers in
+[PERFORMANCE_ANALYSIS.md](PERFORMANCE_ANALYSIS.md).
+
+| Plan said | Reality | Outcome |
+|---|---|---|
+| §4.5 Capping OpenCV threads will help — both libraries grabbing 8 threads must oversubscribe a 4-core chip | Interleaved A/B over 3 rounds: capping **cost ~5%** (20.13 → 19.15 FPS). Preprocessing is ~1.1 ms of a ~50 ms frame, so there was never much to reclaim | **Hypothesis rejected.** Default changed from `2` to `0`. Knob kept for busy machines |
+| §4.3 The export takes raw 0–255 BGR, no normalisation *(marked "to be confirmed")* | Confirmed empirically — `/255` input yields **zero** detections | **Held.** Locked down by `test_normalisation_would_break_the_model` |
+| R2 The fixed-416 export may block the resolution sweep | The head's Reshape nodes already target `[1, 85, -1]`, so only the declared input dims needed widening. 320/416/512 all produce exactly the predicted anchor counts | **Resolved.** `models/make_dynamic.py`; the sweep runs on model input as originally hoped |
+| §5 A fixed frame count is enough for a fair benchmark | Not on this laptop. Four identical runs drifted 24.3 → 19.4 FPS on thermal throttling alone — **larger than most of the effects being measured** | **Plan was inadequate.** Added `--settle`; small differences re-checked with interleaved A/B |
+| §4.6 INT8 expected "~1.5–2×, with some mAP loss" | **2.1×** (19.8 → 42.1 FPS), −2.6 mAP@0.5:0.95, model 20.2 MB → 5.2 MB | **Held**, at the top of the predicted range |
+| §1 YOLOX-Tiny will clear 15 FPS at 416 | 19.8 FPS sustained, 23.0 live | **Held.** The Nano fallback was never needed |
+| Dependency budget included `tqdm` for download progress bars | Both download scripts print their own progress in three lines | **Dropped.** Five runtime dependencies, not six |
+
+The two things I would tell someone starting this again: the pipeline is 93%
+inference, so optimising anything else is rearranging deck chairs; and on a thin
+laptop, thermal drift is a larger effect than most of the optimisations, so
+measure that before you trust any before/after table.
