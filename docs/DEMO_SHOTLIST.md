@@ -69,8 +69,9 @@ Notes on that command:
   diverge by more than 10%, since that means the file plays at the wrong speed.
   If you see that warning, re-record with `--record-fps <the rate it reports>`.
 - The frame rate written into the file is **measured**, not assumed. The writer
-  stays closed for the first 30 frames while the rolling FPS settles, then opens
-  at that rate, so the clip plays back at real speed instead of the
+  stays closed for the first 45 frames while the rate is measured (excluding
+  warm-up frames, which are far slower and would drag the estimate down), then
+  opens at that rate — so the clip plays at real speed instead of the
   slow-motion-or-chipmunk effect you get from hardcoding 30 fps.
 - A red `REC` dot appears top-right once recording actually starts, so there is
   no ambiguity about whether a take was captured.
@@ -179,7 +180,7 @@ its place.
    for the upload bar to finish before publishing.
 6. **Publish release.**
 7. Right-click the attached file → copy link. It looks like:
-   `https://github.com/<you>/real-time-object-detection/releases/download/v1.0/demo.mp4`
+   `https://github.com/Pratik7595/real-time-object-detection/releases/download/v1.0/demo.mp4`
 8. In `README.md`, replace `DEMO_VIDEO_URL` with that link. Commit and push.
 
 ### Or, with the `gh` CLI

@@ -20,7 +20,7 @@ it with `python -m src.main --source assets/sample.jpg`.*
 (MP4, hosted as a release asset).
 
 <!-- Replace DEMO_VIDEO_URL above with the release download link, which looks
-     like https://github.com/<you>/real-time-object-detection/releases/download/v1.0/demo.mp4
+     like https://github.com/Pratik7595/real-time-object-detection/releases/download/v1.0/demo.mp4
      docs/DEMO_SHOTLIST.md section 5 has the steps. -->
 
 Produced by the tool's own `--record` flag rather than by screen-capture
@@ -66,7 +66,7 @@ no compiler.
 <summary><b>Windows</b></summary>
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/real-time-object-detection.git
+git clone https://github.com/Pratik7595/real-time-object-detection.git
 cd real-time-object-detection
 python -m venv .venv
 .venv\Scripts\activate
@@ -79,7 +79,7 @@ python models/download_weights.py
 <summary><b>macOS</b></summary>
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/real-time-object-detection.git
+git clone https://github.com/Pratik7595/real-time-object-detection.git
 cd real-time-object-detection
 python3 -m venv .venv
 source .venv/bin/activate
@@ -95,7 +95,7 @@ never see the prompt, see Troubleshooting.
 <summary><b>Linux</b></summary>
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/real-time-object-detection.git
+git clone https://github.com/Pratik7595/real-time-object-detection.git
 cd real-time-object-detection
 python3 -m venv .venv
 source .venv/bin/activate
