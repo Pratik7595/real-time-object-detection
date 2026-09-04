@@ -1,0 +1,30 @@
+# Model weights: fetched by models/download_weights.py, never committed.
+models/*.onnx
+models/*.pth
+
+# Datasets and the demo video: downloaded or generated, far too big for git.
+data/
+*.mp4
+*.avi
+*.mov
+
+# Per-run measurement output. The curated tables that back the docs are
+# committed by hand under results/; raw per-run CSVs are not.
+results/run_*.csv
+results/screenshot_*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

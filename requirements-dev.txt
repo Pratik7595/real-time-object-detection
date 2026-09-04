@@ -1,0 +1,16 @@
+# Development and evaluation extras. Deliberately kept out of requirements.txt
+# so the five-minute path from clone to live detection never has to build a C
+# extension.
+-r requirements.txt
+
+# Test runner.
+pytest==9.1.1
+
+# Reference COCO mAP implementation, used by src/evaluate.py. Scoring mAP by
+# hand is a well-known way to publish a number that is subtly wrong, so the
+# official implementation does that part.
+#
+# Windows note: 2.0.11 ships a cp312 wheel and installed here with no compiler.
+# On older versions or unusual platforms pip may fall back to a source build,
+# which needs a C toolchain -- that is exactly why this is not a runtime dep.
+pycocotools==2.0.11

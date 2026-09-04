@@ -1,0 +1,36 @@
+# Runtime dependencies. Pinned to the exact versions this project was built and
+# benchmarked against, so the numbers in docs/PERFORMANCE_ANALYSIS.md are
+# reproducible rather than approximately reproducible.
+#
+# ARM64 notes (see README "Platform support"): onnxruntime, numpy and onnx all
+# publish manylinux aarch64 and macOS arm64 wheels, so `pip install -r` is the
+# same command on an M-series Mac or a 64-bit Raspberry Pi OS as it is on x86.
+# opencv-python is the one to watch: there is no wheel for 32-bit Raspberry Pi
+# OS, where the fix is the distro package (`sudo apt install python3-opencv`)
+# rather than pip.
+
+# Inference runtime. Chosen over PyTorch/Ultralytics for size (~16 MB vs
+# ~250 MB) and because it needs no CUDA toolchain to run on CPU.
+onnxruntime==1.29.0
+
+# Capture, resize, drawing and MP4 writing.
+opencv-python==5.0.0.93
+
+# Grid decode and NMS. Also an onnxruntime dependency, pinned here explicitly
+# because the postprocessing maths depends on it directly.
+numpy==2.5.2
+
+# config/config.yaml.
+pyyaml==6.0.3
+
+# Justification: the brief asks benchmark.py for CPU and RAM figures, and there
+# is no cross-platform way to read process RSS or CPU% from the standard
+# library. Imported only by src/benchmark.py -- the live app never touches it.
+psutil==7.2.2
+
+# Justification: models/make_dynamic.py edits two dimension fields in the ONNX
+# graph so the fixed-416 release export accepts other resolutions. Without it
+# the multi-resolution benchmark the brief asks for cannot run at all. Also used
+# by models/quantize.py. Pulls no new transitive deps -- protobuf already
+# arrives with onnxruntime.
+onnx==1.22.0

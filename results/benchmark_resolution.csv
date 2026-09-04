@@ -1,0 +1,4 @@
+label,model,imgsz,capture,preprocess,ort_threads,cv_threads,infer_every,frames,fps_mean,fps_median,fps_p95,fps_p5,cpu_percent,rss_peak_mb,detections_mean,capture_ms,preprocess_ms,inference_ms,postprocess_ms,render_ms
+imgsz 320,yolox_tiny_dynamic.onnx,320,640x480,prealloc,0,2,1,300,32.4,33.05,42.36,24.91,398.5,129.2,8.8,0.028,0.576,28.75,1.048,0.411
+imgsz 416,yolox_tiny.onnx,416,640x480,prealloc,0,2,1,300,19.78,19.77,25.39,16.08,397.2,141.7,9.9,0.027,1.2,47.107,1.718,0.441
+imgsz 512,yolox_tiny_dynamic.onnx,512,640x480,prealloc,0,2,1,300,13.16,13.06,17.09,11.07,397.3,165.5,11.0,0.028,1.472,71.792,2.192,0.471

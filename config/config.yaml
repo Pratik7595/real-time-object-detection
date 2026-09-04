@@ -1,0 +1,57 @@
+# Defaults for the live app, the benchmark and the evaluator.
+# Anything here can be overridden on the command line; the CLI always wins.
+
+model:
+  # Relative to the repository root. Resolved with pathlib, never absolute.
+  path: models/yolox_tiny.onnx
+  # [height, width] fed to the network. The stock YOLOX release is exported at
+  # 416x416; other sizes need models/make_dynamic.py first (see README).
+  input_size: [416, 416]
+
+detection:
+  # 0.30 is a deliberate compromise, not a default I inherited: below ~0.25 the
+  # live view fills with junk boxes, above ~0.45 it starts dropping real objects
+  # held at arm's length. Measured sweep is in docs/PERFORMANCE_ANALYSIS.md.
+  conf_threshold: 0.30
+  iou_threshold: 0.45
+  max_detections: 100
+  # null = all 80 COCO classes. Override with --classes person cup laptop
+  classes: null
+
+camera:
+  source: 0
+  width: 640
+  height: 480
+  fps: 30
+  # Ask the driver for a shallow internal queue so cap.read() returns something
+  # close to "now". Not honoured by every backend; the capture thread's own
+  # drop-stale buffer is what actually bounds latency.
+  buffer_size: 1
+
+runtime:
+  device: cpu               # cpu | cuda | auto
+  # 0 = leave ONNX Runtime's own heuristic alone. Measured against explicit
+  # values of 1/2/4/8 on the 4C/8T i5: ORT's default lands within noise of the
+  # best (intra_op=4), and 1 and 2 are much worse. Nothing to gain by
+  # hardcoding a core count that would be wrong on the reviewer's machine.
+  intra_op_threads: 0
+  inter_op_threads: 1
+  # 0 = leave OpenCV alone. This started as 2 on the theory that OpenCV and ORT
+  # both grabbing all 8 threads would oversubscribe a 4-core chip. An
+  # interleaved A/B (3 rounds, alternating) said otherwise: capping cost ~5%
+  # (20.1 -> 19.2 FPS). Preprocessing is only ~1.1 ms of a ~50 ms frame, so
+  # there was never much to win. Hypothesis tested and dropped -- see
+  # docs/PERFORMANCE_ANALYSIS.md.
+  opencv_threads: 0
+  preprocess_mode: prealloc # prealloc | naive (naive exists for the ablation table)
+  infer_every: 1            # >1 reuses the previous boxes on skipped frames
+
+display:
+  show: true
+  window_name: "Real-Time Object Detection"
+  show_hud: true
+  font_scale: 0.5
+
+output:
+  results_dir: results
+  write_csv: true

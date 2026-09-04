@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+# `src` is a plain package in the repo root rather than an installed
+# distribution, so the root has to be importable for `from src... import`.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,6 @@
+label,model,imgsz,capture,preprocess,ort_threads,cv_threads,infer_every,frames,fps_mean,fps_median,fps_p95,fps_p5,cpu_percent,rss_peak_mb,detections_mean,capture_ms,preprocess_ms,inference_ms,postprocess_ms,render_ms
+"A baseline (naive preprocess, per-frame allocation)",yolox_tiny.onnx,416,640x480,naive,0,0,1,300,19.25,19.14,24.29,15.65,399.1,142.5,9.9,0.027,3.422,46.328,1.688,0.425
+B + preallocated preprocess buffers  [shipped],yolox_tiny.onnx,416,640x480,prealloc,0,0,1,300,20.93,21.52,25.76,16.56,399.7,140.0,9.9,0.033,1.008,44.64,1.62,0.423
+C + OpenCV capped to 2 threads (rejected),yolox_tiny.onnx,416,640x480,prealloc,0,2,1,300,19.39,19.52,25.03,15.33,396.1,141.6,9.9,0.036,1.235,48.012,1.786,0.457
+D + --infer-every 2,yolox_tiny.onnx,416,640x480,prealloc,0,0,2,300,40.59,675.36,2178.65,17.18,399.8,140.9,9.9,0.021,0.614,22.629,0.865,0.474
+E + INT8 quantisation (models/quantize.py),yolox_tiny_int8.onnx,416,640x480,prealloc,0,2,1,300,42.07,42.96,48.56,34.46,400.0,110.6,9.9,0.031,1.119,20.685,1.481,0.405
