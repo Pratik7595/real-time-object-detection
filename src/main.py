@@ -21,9 +21,11 @@ from .metrics import Metrics, timestamped_path
 from .video_stream import CameraError, VideoStream
 from .visualizer import draw_detections, draw_footer, draw_hud, draw_recording_dot
 
-# Give the FPS estimate time to settle before it decides the recording's
-# playback rate. ~30 frames is 1-2 seconds, enough to average out the jitter.
-RECORD_CALIBRATION_FRAMES = 30
+# Frames processed before the writer opens, so its frame rate is measured rather
+# than guessed. This has to be comfortably longer than WARMUP_FRAMES: the rate is
+# computed from the frames *after* warm-up, and a handful of samples is not
+# enough when a camera's delivery is jittery.
+RECORD_CALIBRATION_FRAMES = 45
 
 # Frames excluded from the *summary* (never from the CSV). Detector.warmup()
 # cannot reach the render path or OpenCV's first-call lazy init, so the first
@@ -187,6 +189,7 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
 
     metrics = Metrics(window=120)
     writer: cv2.VideoWriter | None = None
+    record_fps_used: float | None = None
     record_path = Path(args.record) if args.record else None
     if record_path is not None and not record_path.is_absolute():
         record_path = REPO_ROOT / record_path
@@ -239,10 +242,18 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
                         args.record_fps is not None
                         or frame_index >= RECORD_CALIBRATION_FRAMES
                     ):
-                        fps = args.record_fps or max(1.0, min(120.0, metrics.fps_rolling))
+                        # Must exclude warm-up. metrics.fps_rolling averages the
+                        # whole window, and the first frame costs ~600 ms (lazy
+                        # init of resize/draw/imshow). One frame like that in a
+                        # 30-frame window halves the estimate, and the file then
+                        # plays back at half speed -- which is exactly what this
+                        # calibration exists to prevent.
+                        measured = metrics.summarize(skip_first=WARMUP_FRAMES).fps_mean
+                        fps = args.record_fps or max(1.0, min(120.0, measured))
                         writer = _open_writer(
                             record_path, fps, (frame.shape[1], frame.shape[0])
                         )
+                        record_fps_used = fps
                         print(f"recording : {record_path} at {fps:.1f} fps")
                     if writer is not None:
                         draw_recording_dot(frame)
@@ -277,7 +288,7 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
         if cfg.display.show:
             cv2.destroyAllWindows()
 
-    _report(metrics, cfg, detector, record_path, writer is not None)
+    _report(metrics, cfg, detector, record_path, record_fps_used)
     return exit_code
 
 
@@ -286,7 +297,7 @@ def _report(
     cfg: Config,
     detector: Detector,
     record_path: Path | None,
-    recorded: bool,
+    record_fps_used: float | None,
 ) -> None:
     # Warm-up frames are excluded from the summary but stay in the CSV, so the
     # raw data can always be re-checked against the headline numbers.
@@ -312,9 +323,26 @@ def _report(
             timestamped_path(cfg.output.results_dir, "run", ".csv")
         )
         print(f"csv       : {csv_path}")
-    if record_path is not None and recorded:
+    if record_path is not None and record_fps_used is not None:
         size_mb = record_path.stat().st_size / 1e6 if record_path.exists() else 0.0
         print(f"video     : {record_path} ({size_mb:.1f} MB)")
+
+        # The writer's frame rate is fixed when the file is opened, but the
+        # actual rate can drift afterwards -- a camera re-negotiating exposure
+        # can halve its output mid-take. If the two disagree, the clip plays at
+        # the wrong speed, and the FPS counter burned into the frames will
+        # contradict the playback. Better to say so than to ship a silent lie.
+        drift = abs(summary.fps_mean - record_fps_used) / record_fps_used
+        if drift > 0.10:
+            ratio = summary.fps_mean / record_fps_used
+            print()
+            print(
+                f"WARNING   this clip will play at {ratio:.2f}x real speed.\n"
+                f"          written at {record_fps_used:.1f} fps, but the run "
+                f"averaged {summary.fps_mean:.1f} fps.\n"
+                f"          Re-record with --record-fps {summary.fps_mean:.0f} "
+                f"to pin the rate."
+            )
 
 
 def main(argv: list[str] | None = None) -> int:

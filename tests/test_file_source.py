@@ -111,6 +111,43 @@ def test_list_classes_exits_cleanly():
     assert cli_main(["--list-classes"]) == 0
 
 
+@needs_model
+def test_recording_frame_rate_excludes_warmup(tmp_path):
+    """Regression: the demo clip must not play back at the wrong speed.
+
+    The writer's frame rate is fixed when the file opens, and it used to be
+    taken from the rolling FPS average -- which still contained the ~600 ms
+    first frame. One frame like that in a 30-frame window halved the estimate,
+    and a real 45-second take was written as a 48-second file playing at 0.49x
+    while the FPS counter drawn on the frames said otherwise.
+
+    This asserts the file's declared rate is consistent with the rate the run
+    actually achieved, which is the property that was broken.
+    """
+    out = tmp_path / "clip.mp4"
+    assert cli_main(
+        ["--source", str(SAMPLE_PATH), "--no-display", "--max-frames", "90",
+         "--record", str(out)]
+    ) == 0
+    assert out.exists(), "no video written"
+
+    cap = cv2.VideoCapture(str(out))
+    assert cap.isOpened(), "written file will not open"
+    declared_fps = cap.get(cv2.CAP_PROP_FPS)
+    frames = 0
+    while cap.read()[0]:
+        frames += 1
+    cap.release()
+
+    assert frames > 0, "file decodes to zero frames"
+    # The image-loop source runs far faster than any warm-up frame, so a rate
+    # contaminated by warm-up would land well under 10 fps here.
+    assert declared_fps > 10.0, (
+        f"declared {declared_fps:.1f} fps - warm-up frames have leaked back "
+        f"into the recording rate calibration"
+    )
+
+
 # ------------------------------------------------------------------ rendering
 
 

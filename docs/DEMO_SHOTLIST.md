@@ -50,19 +50,24 @@ with an object.
 ## 3. Record it
 
 ```bash
-python -m src.main --source 0 --record results/demo.mp4 --max-frames 702
+python -m src.main --source 0 --record results/demo_raw.mp4 --max-frames 1338
 ```
 
 Notes on that command:
 
-- `--max-frames 702` is a stop-watch, sized from a measured test take on this
-  machine: the camera delivered **15.6 fps**, so 45 s ≈ 702 frames. **Check
-  your own rate first** — run `python -m src.main --source 0 --max-frames 150`
-  and read the `fps mean` line, then use `rate × 45`. A camera's nominal 30 fps
-  halves in dim light, and sizing this from the nominal figure gives you a
-  22-second clip that stops in the middle of your shot list.
-- You can ignore the frame count entirely and just press `q` when you are done.
-  That is the safer option for a first take.
+- `--max-frames 1338` is a stop-watch: at the ~29.7 fps this camera delivered in
+  good light, that is ~45 s. **Measure your own rate first** — run
+  `python -m src.main --source 0 --max-frames 150` and read the `fps mean` line,
+  then use `rate × 45`.
+- **This number is not stable across sessions.** The same camera measured
+  15.6 fps one evening and 29.7 fps the next day: auto-exposure halves the
+  sensor's output in dim light. Sizing the take from a stale figure produced a
+  23-second clip that stopped in the middle of the shot list. Re-measure each
+  time, or ignore the count entirely and press `q` when you are done — which is
+  the safer option for a first take.
+- The tool warns at the end if the clip's frame rate and the run's actual rate
+  diverge by more than 10%, since that means the file plays at the wrong speed.
+  If you see that warning, re-record with `--record-fps <the rate it reports>`.
 - The frame rate written into the file is **measured**, not assumed. The writer
   stays closed for the first 30 frames while the rolling FPS settles, then opens
   at that rate, so the clip plays back at real speed instead of the
@@ -79,38 +84,53 @@ python -m src.main --source 0 --record results/demo_raw.mp4 \
   --classes person cup bottle laptop keyboard mouse "cell phone" book scissors
 ```
 
-## 4. Compress it — probably not needed
+## 4. Compress it — you will need to
 
-**Measured on this machine, compression is unnecessary.** A test take wrote
-0.308 MB per second of video at 640×480, which projects to:
+`--record` writes mp4v, which every stock OpenCV wheel can encode but which is
+not efficient. **Motion is what costs bytes**, and a demo is nothing but motion:
 
-| Take length | Projected size | Under the 25 MB target? |
+| Take | Byte rate | 45 s take |
 |---|---|---|
-| 40 s | ~12.3 MB | yes |
-| 45 s | ~13.8 MB | yes |
-| 50 s | ~15.4 MB | yes |
+| Near-static test (sitting still) | 0.308 MB/s | ~13.8 MB |
+| **Real demo (moving, holding objects up)** | **0.746 MB/s** | **~33.9 MB** |
+| After one H.264 pass at `-crf 26` | 0.102 MB/s | **~4.6 MB** |
 
-So `results/demo.mp4` can go straight to the release asset with no ffmpeg step,
-which is convenient because ffmpeg is not installed here. Check the size the
-tool prints at the end of the run before assuming it holds for your take — a
-busier scene compresses worse.
+An earlier version of this document said compression was probably unnecessary,
+based on the static figure. That was wrong by 2.4× the moment a real take was
+recorded. Budget for the compression pass.
 
-Note also that recording costs frame rate: the `render` stage went from 0.26 ms
-to 7.65 ms with the writer active on live camera frames, taking the run from
-15.0 to 14.1 FPS. The counter in your clip will read slightly lower than the
-same setup not recording. That is honest and worth leaving alone rather than
-hiding.
+Note also that recording costs frame rate: the `render` stage goes from ~0.3 ms
+to ~8 ms with the writer active on live camera frames. The counter in your clip
+reads slightly lower than the same setup not recording. That is honest and worth
+leaving alone rather than hiding.
 
-### If you do need to compress
+### ffmpeg without a system install
 
-One ffmpeg pass to H.264, which is far more efficient than the mp4v that stock
-OpenCV wheels can write:
+ffmpeg is not bundled with Windows and you may not want a system package. The
+pip route needs no admin rights and drops a real ffmpeg binary in your venv:
 
 ```bash
-ffmpeg -i results/demo.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -an results/demo_small.mp4
+pip install imageio-ffmpeg
+python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
 ```
 
-Upload `demo_small.mp4` in that case.
+That prints a path to an `ffmpeg` executable you can call directly. It is a
+one-off tool for producing the demo, so it is deliberately **not** in
+`requirements.txt` or `requirements-dev.txt` — nothing in the project imports it.
+
+### The compression pass
+
+Record to `demo_raw.mp4`, then produce the upload copy. Measured on the real
+take: **33.9 MB → 4.6 MB**, a 7.3× reduction with no visible loss on the box
+labels.
+
+```bash
+ffmpeg -i results/demo_raw.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -an results/demo.mp4
+```
+
+(Substitute the path printed by `imageio_ffmpeg.get_ffmpeg_exe()` if you used
+the pip route.) Keep `demo_raw.mp4` until you are happy with the result — it is
+gitignored, and re-encoding from the compressed copy loses quality twice.
 
 - `-crf 26` is the quality knob: lower is better and bigger. 23 is visually
   transparent; 28 starts to smear the text on the labels. If the result is still
