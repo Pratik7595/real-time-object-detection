@@ -16,20 +16,17 @@ no camera.
 This is `assets/sample.jpg`, a CC BY 2.0 image bundled with the repo — reproduce
 it with `python -m src.main --source assets/sample.jpg`.*
 
-### Demo video
+**Demo video:** [45 s of live webcam detection, FPS counter visible throughout](DEMO_VIDEO_URL)
+(MP4, hosted as a release asset).
 
-45 seconds of live webcam detection, with the FPS counter visible throughout.
-Produced by the tool's own `--record` flag, not by screen-capture software, so
-the frame rate shown in the clip is the frame rate that was actually measured.
+<!-- Replace DEMO_VIDEO_URL above with the release download link, which looks
+     like https://github.com/<you>/real-time-object-detection/releases/download/v1.0/demo.mp4
+     docs/DEMO_SHOTLIST.md section 5 has the steps. -->
 
-<!-- Replace the line below with the GitHub attachment URL for the clip. Put it
-     bare, on its own line, with blank lines around it -- GitHub turns a
-     https://github.com/user-attachments/assets/<uuid> URL into an inline player.
-     docs/DEMO_SHOTLIST.md section 5 has the upload steps. -->
-
-DEMO_VIDEO_URL
-
-Shot list and recording commands: [docs/DEMO_SHOTLIST.md](docs/DEMO_SHOTLIST.md).
+Produced by the tool's own `--record` flag rather than by screen-capture
+software, so the frame rate shown in the clip is the frame rate that was
+actually measured. Shot list and recording commands:
+[docs/DEMO_SHOTLIST.md](docs/DEMO_SHOTLIST.md).
 
 ---
 

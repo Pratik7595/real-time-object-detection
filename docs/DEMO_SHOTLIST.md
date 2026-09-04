@@ -112,45 +112,63 @@ If you would rather not install it, record at a lower resolution instead — a
 python -m src.main --source 0 --width 480 --height 360 --record results/demo.mp4
 ```
 
-## 5. Publish it as an inline player
+## 5. Publish it as a release asset
 
 The video is gitignored on purpose (`*.mp4`) — binaries do not belong in a git
-history. Host it as a GitHub attachment instead, which gets you a URL that
-renders as a **playable video inside the README** rather than a download link.
+history. Attach it to a GitHub release instead. A release asset is tied to a tag
+on the repository rather than to a comment thread, which makes it the durable
+option: it survives repo transfers, it is obvious where it came from, and the
+URL is readable rather than a UUID.
+
+The trade-off, accepted deliberately: the link **downloads** the file rather
+than playing it in the page. The screenshot at the top of the README carries the
+"what does this look like" job, so the video does not need to autoplay to earn
+its place.
+
+### Web UI
 
 1. Push the repo to GitHub if you have not already.
-2. Open a new issue on it: `https://github.com/<you>/real-time-object-detection/issues/new`.
-   Title it anything — `demo video asset` will do.
-3. Drag `results/demo.mp4` into the comment box. Wait for the upload to finish;
-   the box fills with a URL of the form
-   `https://github.com/user-attachments/assets/<uuid>`.
-4. **Submit the issue**, then copy the URL out of the posted comment. Do not
-   just copy it from the draft box and navigate away — attach the file to a
-   comment that actually exists. You can close the issue immediately
-   afterwards; the attachment stays reachable.
-5. In `README.md`, replace the line that reads `DEMO_VIDEO_URL` with that URL,
-   bare, on its own line with blank lines either side. Do not wrap it in
-   markdown link syntax — a bare URL is what triggers the player.
-6. Commit, push, and **look at the rendered README on github.com**.
+2. Go to **Releases → Draft a new release**.
+3. **Choose a tag** → type `v1.0` → *Create new tag on publish*.
+4. Title it `v1.0 — real-time detection demo`. A one-line body is plenty:
+   the hardware, the model, and the measured frame rate.
+5. Drag `results/demo.mp4` into the **Attach binaries** box at the bottom. Wait
+   for the upload bar to finish before publishing.
+6. **Publish release.**
+7. Right-click the attached file → copy link. It looks like:
+   `https://github.com/<you>/real-time-object-detection/releases/download/v1.0/demo.mp4`
+8. In `README.md`, replace `DEMO_VIDEO_URL` with that link. Commit and push.
 
-Two things to check on that rendered page, because neither is visible locally:
+### Or, with the `gh` CLI
 
-- **Does it render as a player?** A bare attachment URL normally does. If you
-  get a plain link instead, swap it for an explicit tag, which GitHub also
-  accepts in markdown files:
-  ```html
-  <video src="https://github.com/user-attachments/assets/<uuid>" controls></video>
-  ```
-- **Does it work logged out?** Open the README in a private window. A link that
-  only resolves while you are signed into your own account is the most common
-  way a submission's demo silently fails, and you cannot detect it from your own
-  browser session.
+One command, same result:
 
-GitHub's per-file attachment limit is comfortably above the 25 MB target from
-section 4, but check the figure at upload time rather than trusting a number
-written here — if the upload is rejected, compress harder with a higher `-crf`.
+```bash
+gh release create v1.0 results/demo.mp4 \
+  --title "v1.0 - real-time detection demo" \
+  --notes "45s webcam demo. YOLOX-Tiny INT8, 416px, CPU-only on an i5-1135G7."
+```
 
-If you would rather not depend on attachments at all, a release asset
-(`Releases → Draft a new release → attach demo.mp4`) is the more permanent
-option; it downloads rather than plays inline, and the README line then becomes
-an ordinary markdown link.
+The asset URL follows the pattern in step 7 — you do not need to look it up, the
+filename you uploaded is the filename in the URL.
+
+### Check it before you submit
+
+- **Open the link in a private window.** A link that only resolves while you are
+  signed into your own account is the most common way a submission's demo
+  silently fails, and you cannot detect it from your own browser session. Public
+  repo release assets are reachable by anyone; private repo assets are not, so
+  if the repo is private this is the step that will catch it.
+- **Confirm the file plays after downloading**, not just that it downloads. An
+  interrupted upload produces a truncated MP4 that still returns HTTP 200.
+
+### Notes
+
+- Release assets have a much larger size ceiling than the 25 MB target in
+  section 4, so that target is about the reviewer's patience, not a hard limit.
+- Deleting the release deletes its assets and breaks the README link. If you
+  re-cut the release, re-check the link.
+- If you later want the video to play inline on the repo front page instead,
+  the alternative is a GitHub *attachment*: drag the MP4 into an issue comment,
+  submit it, and paste the resulting `user-attachments` URL into the README bare
+  on its own line. That renders as a player but is tied to the issue.
