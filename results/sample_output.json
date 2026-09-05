@@ -1,0 +1,127 @@
+{
+  "input": {
+    "file": "assets/sample.jpg",
+    "width": 640,
+    "height": 480,
+    "source": "COCO val2017 image 340894, CC BY 2.0 (see NOTICE)"
+  },
+  "model": {
+    "model": "yolox_tiny_int8.onnx",
+    "input_size": "416x416",
+    "providers": "CPUExecutionProvider",
+    "conf_threshold": 0.3,
+    "iou_threshold": 0.45,
+    "preprocess_mode": "prealloc"
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0"
+  },
+  "timing_ms": {
+    "preprocess": 4.937,
+    "inference": 18.392,
+    "postprocess": 1.295
+  },
+  "detection_count": 9,
+  "detections": [
+    {
+      "class_id": 63,
+      "class_name": "laptop",
+      "confidence": 0.9368,
+      "box_xyxy": [
+        62.6,
+        59.3,
+        308.3,
+        375.5
+      ]
+    },
+    {
+      "class_id": 66,
+      "class_name": "keyboard",
+      "confidence": 0.9093,
+      "box_xyxy": [
+        93.7,
+        335.3,
+        468.0,
+        487.8
+      ]
+    },
+    {
+      "class_id": 62,
+      "class_name": "tv",
+      "confidence": 0.9093,
+      "box_xyxy": [
+        284.5,
+        21.6,
+        492.1,
+        207.1
+      ]
+    },
+    {
+      "class_id": 64,
+      "class_name": "mouse",
+      "confidence": 0.8565,
+      "box_xyxy": [
+        473.6,
+        325.0,
+        541.8,
+        367.3
+      ]
+    },
+    {
+      "class_id": 66,
+      "class_name": "keyboard",
+      "confidence": 0.6692,
+      "box_xyxy": [
+        -0.0,
+        320.4,
+        105.9,
+        438.8
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.5739,
+      "box_xyxy": [
+        328.7,
+        72.6,
+        432.5,
+        162.8
+      ]
+    },
+    {
+      "class_id": 41,
+      "class_name": "cup",
+      "confidence": 0.496,
+      "box_xyxy": [
+        546.0,
+        253.9,
+        588.3,
+        316.6
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.4251,
+      "box_xyxy": [
+        -1.5,
+        123.0,
+        42.9,
+        238.2
+      ]
+    },
+    {
+      "class_id": 66,
+      "class_name": "keyboard",
+      "confidence": 0.3543,
+      "box_xyxy": [
+        89.4,
+        226.2,
+        287.4,
+        311.5
+      ]
+    }
+  ]
+}

@@ -201,6 +201,35 @@ python models/quantize.py
 python models/make_dynamic.py --src models/yolox_tiny_int8.onnx
 ```
 
+## Sample input and output
+
+One input and its two outputs are committed, so you can see exactly what this
+program produces without installing anything — and diff your own run against a
+known-good result.
+
+| | File | What it is |
+|---|---|---|
+| **Input** | [`assets/sample.jpg`](assets/sample.jpg) | 640×480 desk scene (COCO val2017 #340894, CC BY 2.0) |
+| **Output** | [`results/sample_detection.png`](results/sample_detection.png) | The annotated frame: boxes, class names, confidences, HUD |
+| **Output** | [`results/sample_output.json`](results/sample_output.json) | The same detections as structured data, plus model and timing metadata |
+
+Reproduce both:
+
+```bash
+python scripts/make_sample_output.py
+```
+
+Expected result — 9 objects at the default `conf=0.30`:
+
+```
+laptop 0.94 | keyboard 0.91 | tv 0.91 | mouse 0.86 | keyboard 0.67
+person 0.57 | cup 0.50 | person 0.43 | keyboard 0.35
+```
+
+Your confidences may differ in the last decimal place: the INT8 model is built
+on your machine, and quantisation is not guaranteed bit-identical across ONNX
+Runtime versions. The set of objects found should match.
+
 ## Model choice
 
 **YOLOX-Tiny, ONNX, 416×416.** The full comparison is in
