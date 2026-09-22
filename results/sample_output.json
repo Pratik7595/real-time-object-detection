@@ -18,9 +18,9 @@
     "platform": "Windows-11-10.0.26200-SP0"
   },
   "timing_ms": {
-    "preprocess": 4.937,
-    "inference": 18.392,
-    "postprocess": 1.295
+    "preprocess": 1.076,
+    "inference": 20.176,
+    "postprocess": 1.355
   },
   "detection_count": 9,
   "detections": [
