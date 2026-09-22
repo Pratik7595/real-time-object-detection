@@ -122,8 +122,13 @@ def batched_nms(
     if boxes.size == 0:
         return np.empty((0,), dtype=np.int64)
     # Larger than any plausible image dimension, so classes cannot collide.
-    offsets = class_ids.astype(np.float32) * 100_000.0
-    return nms(boxes + offsets[:, None], scores, iou_threshold)
+    # float64: at class 79 the offset is ~7.9e6, where float32 spacing is 0.5 px,
+    # so box edges would be rounded to the nearest half pixel before the IoU
+    # comparison -- enough to flip a suppression decision sitting near the
+    # threshold. There are only tens of boxes left by here, so the wider dtype
+    # is free.
+    offsets = class_ids.astype(np.float64) * 100_000.0
+    return nms(boxes.astype(np.float64) + offsets[:, None], scores, iou_threshold)
 
 
 def _make_grids(input_h: int, input_w: int) -> tuple[np.ndarray, np.ndarray]:

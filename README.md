@@ -310,7 +310,7 @@ Accuracy, on **COCO val2017, first 300 labelled images — not webcam footage**:
 | Metric | INT8 (default) | FP32 |
 |---|---|---|
 | mAP@0.5 | 0.5183 | **0.5326** |
-| mAP@0.5:0.95 | 0.3316 | **0.3568** |
+| mAP@0.5:0.95 | 0.3315 | **0.3568** |
 | Precision / Recall / F1 @ conf 0.30 | 0.673 / 0.483 / 0.562 | 0.694 / 0.490 / 0.574 |
 
 **The trade: INT8 costs 2.5 mAP@0.5:0.95 points (7.1% relative) and buys 1.9×

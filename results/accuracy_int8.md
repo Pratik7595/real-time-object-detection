@@ -14,13 +14,13 @@ providers  : CPUExecutionProvider
 
 | Metric | Value |
 |---|---|
-| mAP@0.5:0.95 | 0.3316 |
+| mAP@0.5:0.95 | 0.3315 |
 | mAP@0.5 | 0.5183 |
 | mAP@0.75 | 0.3544 |
 | mAP_small | 0.1717 |
 | mAP_medium | 0.3247 |
 | mAP_large | 0.5077 |
-| AR@100 | 0.4378 |
+| AR@100 | 0.4377 |
 
 ## Confidence-threshold sensitivity
 

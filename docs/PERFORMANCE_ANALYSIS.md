@@ -381,6 +381,12 @@ The measured size of that bias, for the record:
 still had to be fixed, because "it turned out not to matter" is only knowable
 after you check.
 
+Both rows of that table predate the float64 fix in `batched_nms` and are left as
+measured: they are a valid paired A/B against each other, and the
+calibrated-on-the-eval-set model was a diagnostic build that is not kept. The
+shipped figure elsewhere in this document is the re-measured 0.3315; the same
+fix moved it by −0.0001, so the comparison's conclusion is unaffected.
+
 **Two different confidence thresholds are in play.** Detections are gathered
 once at `conf=0.001` and thresholded afterwards. mAP is the area under the
 precision-recall curve and needs the low-confidence tail to trace that curve;
@@ -393,7 +399,7 @@ reported at a stated threshold (0.30).
 | Metric | **INT8 (shipped)** | FP32 | Δ |
 |---|---|---|---|
 | **mAP@0.5** | **0.5183** | 0.5326 | −0.0143 (−2.7%) |
-| **mAP@0.5:0.95** | **0.3316** | 0.3568 | −0.0252 (−7.1%) |
+| **mAP@0.5:0.95** | **0.3315** | 0.3568 | −0.0253 (−7.1%) |
 | mAP@0.75 | 0.3544 | 0.3827 | −0.0283 |
 | mAP small | 0.1717 | 0.1847 | −0.0130 |
 | mAP medium | 0.3247 | 0.3582 | −0.0335 |
@@ -445,7 +451,7 @@ measurements, and should not be read as "the model cannot detect oranges".
 | Configuration | FPS mean | mAP@0.5:0.95 | mAP@0.5 | Model size |
 |---|---|---|---|---|
 | 320×320 INT8 | 53.7 | not measured | not measured | 5.2 MB |
-| **416×416 INT8** *(shipped)* | **38.0** | **0.3316** | **0.5183** | **5.2 MB** |
+| **416×416 INT8** *(shipped)* | **38.0** | **0.3315** | **0.5183** | **5.2 MB** |
 | 512×512 INT8 | 27.6 | not measured | not measured | 5.2 MB |
 | 320×320 FP32 | 32.4 | not measured | not measured | 20.2 MB |
 | 416×416 FP32 | 19.8 | 0.3568 | 0.5326 | 20.2 MB |
