@@ -208,7 +208,22 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
             with metrics.stage("capture"):
                 frame = stream.read()
             if frame is None:
-                break
+                # read() returns None both when the source ended and when it
+                # merely stalled past the read timeout. Only the first is a
+                # reason to stop; treating a stalled camera as the end would
+                # quietly cut the run short.
+                if stream.is_exhausted:
+                    break
+                print(
+                    "warning: no frame for 2s -- is the camera still connected?",
+                    file=sys.stderr,
+                )
+                # Pump the window so q still quits while the camera is stalled;
+                # the rest of the loop body is skipped, so this is the only
+                # chance to read the keyboard.
+                if cfg.display.show and cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                    break
+                continue
 
             run_inference = frame_index % cfg.runtime.infer_every == 0
             stale = not run_inference

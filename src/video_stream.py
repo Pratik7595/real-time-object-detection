@@ -236,8 +236,23 @@ class VideoStream:
 
     # ---------------------------------------------------------------- read
 
+    @property
+    def is_exhausted(self) -> bool:
+        """True once the source has really ended, or the thread stopped.
+
+        Lets a caller tell a finished file from a camera that merely stalled:
+        `read()` returns None for both.
+        """
+        with self._cond:
+            return self._ended or self._stopped.is_set()
+
     def read(self, timeout: float = 2.0) -> np.ndarray | None:
-        """Return the newest frame, or None when the source is exhausted.
+        """Return the newest frame, or None.
+
+        None means one of two things and the caller usually cares which: the
+        source ended (`is_exhausted` is then True), or no frame arrived within
+        `timeout` seconds (`is_exhausted` is False -- a stalled camera). Treating
+        the second as the first silently truncates a run.
 
         Blocks until a frame is available. That is deliberate: re-running the
         detector on a frame we have already processed would inflate the FPS

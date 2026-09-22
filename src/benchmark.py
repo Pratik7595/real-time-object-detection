@@ -165,7 +165,16 @@ def run_case(
                 with metrics.stage("capture"):
                     frame = stream.read()
                 if frame is None:
-                    break
+                    # A source that ended is a legitimate short run; a source
+                    # that merely stalled is not. Both come back as None, and
+                    # reporting a stalled run as a complete one would publish a
+                    # number measured over frames that were never captured.
+                    if stream.is_exhausted:
+                        break
+                    raise CameraError(
+                        f"capture stalled after {index} of {frames + warmup} "
+                        f"frames; timings from this run are not valid"
+                    )
 
                 if index % infer_every == 0:
                     with metrics.stage("preprocess"):
