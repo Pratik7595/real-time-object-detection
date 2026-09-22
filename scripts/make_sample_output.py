@@ -106,7 +106,11 @@ def main(argv: list[str] | None = None) -> int:
         ],
     }
     JSON_OUT.parent.mkdir(parents=True, exist_ok=True)
-    JSON_OUT.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    # newline="\n", and open() rather than write_text(), which only grew the
+    # argument in 3.10: the default translates to CRLF on Windows, and
+    # .gitattributes then renormalises the file to LF on every commit.
+    with JSON_OUT.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(payload, indent=2) + "\n")
 
     # --- human-readable output ---------------------------------------------
     annotated = frame.copy()
