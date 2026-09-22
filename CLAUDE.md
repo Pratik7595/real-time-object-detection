@@ -81,6 +81,21 @@ own the main thread on macOS). The buffer policy switches on source type:
   consumer takes the frame, because a benchmark or evaluation must see every
   frame.
 
+**`read()` returns `None` for two different things.** The source ended, or no
+frame arrived within the read timeout — check `is_exhausted` to tell them apart.
+Treating a stall as the end silently truncates a run: before this was split, a
+benchmark could stop at frame 40 of 300 and report the short run as complete,
+printing nothing. The two consumer loops answer a stall differently *on
+purpose*, so do not fold them back into matching:
+
+- `main.py` warns and continues — a stalled webcam is recoverable and killing
+  the session is the wrong response. That branch skips the rest of the loop
+  body, which is where `cv2.waitKey` lives, so it pumps the window itself or
+  `q` would stop quitting during the stall.
+- `benchmark.py` raises. A source that *ended* is a legitimate short run, but a
+  stalled one makes the timings invalid, and a benchmark should fail rather
+  than publish a number measured over frames it never captured.
+
 **`src/metrics.py` is shared on purpose.** `main`, `benchmark` and `evaluate`
 all time the same five stages (`capture`, `preprocess`, `inference`,
 `postprocess`, `render`) through it. When this logic lived inside the main loop,
