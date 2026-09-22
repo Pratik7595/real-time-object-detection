@@ -298,7 +298,19 @@ class VideoStream:
             self._cond.notify_all()
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=2.0)
-        if self._cap is not None:
+
+        # Only release once the capture thread is definitely out of cap.read().
+        # The join above can time out with the thread still parked inside it --
+        # exactly the wedged-driver case the timeout exists for -- and freeing
+        # the handle while native code holds it crashes the process rather than
+        # raising. A daemon thread we cannot join dies with us anyway.
+        if self._thread is not None and self._thread.is_alive():
+            print(
+                "warning: capture thread did not stop; leaving the device handle "
+                "to process exit",
+                file=sys.stderr,
+            )
+        elif self._cap is not None:
             self._cap.release()
             self._cap = None
         self._still = None
