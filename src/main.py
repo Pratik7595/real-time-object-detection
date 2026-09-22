@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 from .coco_classes import COCO_CLASSES, resolve_class_filter
 from .config import REPO_ROOT, Config, ConfigError, apply_cli_overrides, load_config
@@ -43,6 +44,19 @@ def _positive_float(text: str) -> float:
     value = float(text)
     if value <= 0:
         raise argparse.ArgumentTypeError(f"must be greater than 0, got {value:g}")
+    return value
+
+
+def _positive_int(text: str) -> int:
+    """argparse type for a frame count that must be > 0.
+
+    Like --record-fps, --max-frames never reaches config.validate(), so the
+    check belongs here. Zero is the one that matters: it used to open the
+    camera, process nothing and exit 0, which reads as a clean run in CI.
+    """
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {value}")
     return value
 
 
@@ -112,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--max-frames",
-        type=int,
+        type=_positive_int,
         default=None,
         help="Stop after N frames. Useful for scripted demo takes and CI.",
     )
@@ -148,6 +162,33 @@ def _open_writer(path: Path, fps: float, size: tuple[int, int]) -> cv2.VideoWrit
             f"and the extension is .mp4"
         )
     return writer
+
+
+def _open_calibrated_writer(
+    path: Path,
+    frame: np.ndarray,
+    metrics: Metrics,
+    forced_fps: float | None,
+) -> tuple[cv2.VideoWriter, float]:
+    """Open the recorder at the rate the run is actually sustaining.
+
+    Warm-up must be excluded. metrics.fps_rolling averages the whole window and
+    the first frame costs ~600 ms (lazy init of resize/draw/imshow); one frame
+    like that in a 30-frame window halves the estimate and the file then plays
+    back at half speed -- exactly what this calibration exists to prevent.
+
+    `forced_fps is not None`, not `or`: a falsy forced value would fall through
+    to the measured path with no history yet -- fps_mean is 0.0 at frame 0 and
+    clamps to 1.0, writing a clip that plays back ~30x slow with no warning.
+    """
+    if forced_fps is not None:
+        fps = forced_fps
+    else:
+        measured = metrics.summarize(skip_first=WARMUP_FRAMES).fps_mean
+        fps = max(1.0, min(120.0, measured))
+    writer = _open_writer(path, fps, (frame.shape[1], frame.shape[0]))
+    print(f"recording : {path} at {fps:.1f} fps")
+    return writer, fps
 
 
 def run(cfg: Config, args: argparse.Namespace) -> int:
@@ -271,28 +312,9 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
                         args.record_fps is not None
                         or frame_index >= RECORD_CALIBRATION_FRAMES
                     ):
-                        # Must exclude warm-up. metrics.fps_rolling averages the
-                        # whole window, and the first frame costs ~600 ms (lazy
-                        # init of resize/draw/imshow). One frame like that in a
-                        # 30-frame window halves the estimate, and the file then
-                        # plays back at half speed -- which is exactly what this
-                        # calibration exists to prevent.
-                        measured = metrics.summarize(skip_first=WARMUP_FRAMES).fps_mean
-                        # `is not None`, not `or`: the guard above already
-                        # accepted the flag, so a falsy value here would fall
-                        # through to the measured path with no history yet --
-                        # fps_mean is 0.0 at frame 0 and clamps to 1.0, writing a
-                        # clip that plays back ~30x slow with no warning.
-                        fps = (
-                            args.record_fps
-                            if args.record_fps is not None
-                            else max(1.0, min(120.0, measured))
+                        writer, record_fps_used = _open_calibrated_writer(
+                            record_path, frame, metrics, args.record_fps
                         )
-                        writer = _open_writer(
-                            record_path, fps, (frame.shape[1], frame.shape[0])
-                        )
-                        record_fps_used = fps
-                        print(f"recording : {record_path} at {fps:.1f} fps")
                     if writer is not None:
                         draw_recording_dot(frame)
                         writer.write(frame)
