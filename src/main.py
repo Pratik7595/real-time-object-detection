@@ -33,6 +33,19 @@ RECORD_CALIBRATION_FRAMES = 45
 WARMUP_FRAMES = 5
 
 
+def _positive_float(text: str) -> float:
+    """argparse type for a rate that must be > 0.
+
+    `--conf` and friends are range-checked in config.validate(), but --record-fps
+    never reaches the config, so the check belongs here. Zero is the one that
+    matters: it used to open the writer and then declare 1 fps.
+    """
+    value = float(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {value:g}")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m src.main",
@@ -92,7 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--record-fps",
-        type=float,
+        type=_positive_float,
         default=None,
         help="Force the recording's frame rate. Default: measure it, so the clip "
         "plays back at real speed.",
@@ -264,7 +277,16 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
                         # plays back at half speed -- which is exactly what this
                         # calibration exists to prevent.
                         measured = metrics.summarize(skip_first=WARMUP_FRAMES).fps_mean
-                        fps = args.record_fps or max(1.0, min(120.0, measured))
+                        # `is not None`, not `or`: the guard above already
+                        # accepted the flag, so a falsy value here would fall
+                        # through to the measured path with no history yet --
+                        # fps_mean is 0.0 at frame 0 and clamps to 1.0, writing a
+                        # clip that plays back ~30x slow with no warning.
+                        fps = (
+                            args.record_fps
+                            if args.record_fps is not None
+                            else max(1.0, min(120.0, measured))
+                        )
                         writer = _open_writer(
                             record_path, fps, (frame.shape[1], frame.shape[0])
                         )
