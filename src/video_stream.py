@@ -29,8 +29,11 @@ class CameraError(RuntimeError):
     """Camera or file could not be opened, or produced no frames in time."""
 
 
-def _backend_candidates() -> list[int]:
-    """Capture backends to try, best-first for the current OS.
+def _backend_candidates() -> list[tuple[str, int]]:
+    """Capture backends to try, best-first for the current OS, as (name, id).
+
+    The name is carried alongside the id so the "tried:" line of a camera-open
+    failure can say CAP_DSHOW rather than 700.
 
     This is platform-*adaptive*, not platform-specific: every entry falls back to
     cv2.CAP_ANY, so the code path is identical everywhere and nothing here is a
@@ -44,8 +47,8 @@ def _backend_candidates() -> list[int]:
     else:
         names = ("CAP_V4L2",)
 
-    backends = [getattr(cv2, n) for n in names if hasattr(cv2, n)]
-    backends.append(cv2.CAP_ANY)
+    backends = [(n, getattr(cv2, n)) for n in names if hasattr(cv2, n)]
+    backends.append(("CAP_ANY", cv2.CAP_ANY))
     return backends
 
 
@@ -126,11 +129,11 @@ class VideoStream:
         # Camera: try each backend, keep the first that yields a real frame.
         index = int(self.source)
         tried: list[str] = []
-        for backend in _backend_candidates():
+        for name, backend in _backend_candidates():
             cap = cv2.VideoCapture(index, backend)
             if not cap.isOpened():
                 cap.release()
-                tried.append(f"backend={backend} (would not open)")
+                tried.append(f"{name} (would not open)")
                 continue
 
             # Must be set before the first read() or some drivers ignore them.
@@ -155,7 +158,7 @@ class VideoStream:
                 return
 
             cap.release()
-            tried.append(f"backend={backend} (opened, no frames)")
+            tried.append(f"{name} (opened, no frames)")
 
         raise CameraError(
             f"Could not read from camera index {index}.\n"
