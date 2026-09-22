@@ -92,6 +92,15 @@ timing there.
 "argparse filled it in". Giving a flag a real default silently overrides
 `config.yaml`. Unknown YAML keys raise rather than being ignored.
 
+**`Detector` validates its own arguments too, not just `config.py`.** It is
+public API and `benchmark.py` and the tests construct it directly, so the YAML
+path is not the only way in. Alongside the input-size checks above, `__init__`
+rejects a `preprocess_mode` outside `prealloc|naive` — `preprocess` only
+special-cases `"naive"` and anything else falls through to the prealloc path
+while `describe()` reports the string it was handed, so a typo would otherwise
+produce an ablation row labelled naive but measured on the fast preprocessor.
+Keep the two validators in agreement.
+
 **COCO has two id spaces.** The model emits contiguous 0-79 indices; the
 annotations use sparse 91-category ids. `src/coco_classes.py` holds the mapping
 and `evaluate.py` must translate, or every detection scores against the wrong
