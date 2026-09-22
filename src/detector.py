@@ -194,6 +194,14 @@ class Detector:
         self.iou_threshold = float(iou_threshold)
         self.max_detections = int(max_detections)
         self.class_filter = set(class_filter) if class_filter else None
+        # Validated here as well as in config.py: preprocess() only special-cases
+        # "naive" and anything else falls through to the prealloc path, while
+        # describe() reports the string it was handed -- so a typo would label an
+        # ablation row as naive while measuring the fast preprocessor.
+        if preprocess_mode not in ("prealloc", "naive"):
+            raise ValueError(
+                f"preprocess_mode must be prealloc|naive, got {preprocess_mode!r}"
+            )
         self.preprocess_mode = preprocess_mode
 
         self.session = self._build_session(device, intra_op_threads, inter_op_threads)
@@ -266,6 +274,10 @@ class Detector:
         Padding goes bottom/right only (YOLOX's own convention), which means
         mapping boxes back is a single divide by the scale ratio with no offset
         term -- one less thing to get wrong.
+
+        In the default "prealloc" mode the returned array is a buffer owned by
+        this detector and is overwritten by the next call; copy it if you need to
+        keep it. Only "naive" mode returns a fresh array.
         """
         h, w = frame.shape[:2]
         ratio = min(self.input_h / h, self.input_w / w)
