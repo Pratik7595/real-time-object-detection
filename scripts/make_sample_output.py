@@ -111,15 +111,18 @@ def main(argv: list[str] | None = None) -> int:
     # --- human-readable output ---------------------------------------------
     annotated = frame.copy()
     draw_detections(annotated, detections, font_scale=cfg.display.font_scale)
+    infer_ms = metrics.stage_ms("inference")
+    # Same line main.py draws, and for the same reason: capture and render are
+    # excluded, so this is the detector's cost, not the frame's.
+    compute_ms = (
+        infer_ms + metrics.stage_ms("preprocess") + metrics.stage_ms("postprocess")
+    )
     draw_hud(
         annotated,
         metrics.fps_instant,
         metrics.fps_rolling,
         len(detections),
-        extra_lines=[
-            f"infer {metrics.stage_ms('inference'):4.1f} ms  "
-            f"total {metrics.stage_ms('inference') + metrics.stage_ms('preprocess') + metrics.stage_ms('postprocess'):4.1f} ms"
-        ],
+        extra_lines=[f"infer {infer_ms:4.1f} ms  compute {compute_ms:4.1f} ms"],
         font_scale=cfg.display.font_scale,
     )
     draw_footer(annotated, "q quit | s screenshot")

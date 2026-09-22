@@ -294,14 +294,21 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
             with metrics.stage("render"):
                 draw_detections(frame, detections, font_scale=cfg.display.font_scale)
                 if cfg.display.show_hud:
+                    infer_ms = metrics.stage_ms("inference")
+                    # capture and render are deliberately excluded: this line is
+                    # the detector's cost, not the frame's.
+                    compute_ms = (
+                        infer_ms
+                        + metrics.stage_ms("preprocess")
+                        + metrics.stage_ms("postprocess")
+                    )
                     draw_hud(
                         frame,
                         metrics.fps_instant,
                         metrics.fps_rolling,
                         len(detections),
                         extra_lines=[
-                            f"infer {metrics.stage_ms('inference'):4.1f} ms  "
-                            f"total {metrics.stage_ms('inference') + metrics.stage_ms('preprocess') + metrics.stage_ms('postprocess'):4.1f} ms"
+                            f"infer {infer_ms:4.1f} ms  compute {compute_ms:4.1f} ms"
                         ],
                         font_scale=cfg.display.font_scale,
                         stale=stale,
