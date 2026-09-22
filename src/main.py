@@ -210,6 +210,7 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
     detections: list[Detection] = []
     frame_index = 0
     stale = False
+    screenshot_wanted = False
     exit_code = 0
     window = cfg.display.window_name
 
@@ -302,15 +303,21 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
                     key = cv2.waitKey(1) & 0xFF
                     if key in (ord("q"), 27):
                         break
-                    if key == ord("s"):
-                        shot = timestamped_path(
-                            cfg.output.results_dir, "screenshot", ".png"
-                        )
-                        shot.parent.mkdir(parents=True, exist_ok=True)
-                        cv2.imwrite(str(shot), frame)
-                        print(f"saved     : {shot}")
+                    screenshot_wanted = key == ord("s")
 
             metrics.end_frame()
+
+            # Written after the frame is closed: a full-frame PNG costs tens of
+            # milliseconds, and it is a user action rather than pipeline work, so
+            # charging it to the render stage would put a multi-frame outlier in
+            # render_ms, fps_p5 and the CSV.
+            if screenshot_wanted:
+                shot = timestamped_path(cfg.output.results_dir, "screenshot", ".png")
+                shot.parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(shot), frame)
+                print(f"saved     : {shot}")
+                screenshot_wanted = False
+
             frame_index += 1
 
     except KeyboardInterrupt:
