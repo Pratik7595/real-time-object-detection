@@ -332,14 +332,13 @@ def run(cfg: Config, args: argparse.Namespace) -> int:
         if cfg.display.show:
             cv2.destroyAllWindows()
 
-    _report(metrics, cfg, detector, record_path, record_fps_used)
+    _report(metrics, cfg, record_path, record_fps_used)
     return exit_code
 
 
 def _report(
     metrics: Metrics,
     cfg: Config,
-    detector: Detector,
     record_path: Path | None,
     record_fps_used: float | None,
 ) -> None:
