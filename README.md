@@ -512,6 +512,187 @@ it.
 **`libGL.so.1: cannot open shared object file` (Linux)**
 `sudo apt install -y libgl1 libglib2.0-0`.
 
+## Developing with Claude Code: Agent View
+
+I'm using and exploring [Claude Code](https://code.claude.com/docs)'s
+**Agent View** while working on this project. This section explains what it is,
+how I use it on this repository, and why it helps. Nothing here is needed to
+*run* the detector. It is about how the code gets written.
+
+> **Status:** Agent View is a **research preview** (Claude Code 2.1.x at the
+> time of writing, available on Pro, Max, Team, Enterprise and Claude API
+> plans). Commands and shortcuts may change, so the
+> [official Agent View docs](https://code.claude.com/docs/en/agent-view) are the
+> source of truth.
+
+### What it is
+
+Normally a Claude Code session belongs to one terminal: you give it a task,
+watch it work, answer its questions, and then give it the next one. Agent View
+separates the work from the terminal. You send several tasks to run as
+**background sessions**, and one screen shows all of them:
+
+```bash
+claude agents
+```
+
+Each row is one session, with a short, continually updated summary: what a
+working session is doing, the question a blocked session is asking, or the
+result a finished session produced. The rows are grouped by state:
+
+| State | Meaning |
+|---|---|
+| **Working** | Claude is running tools or writing a reply |
+| **Needs input** | Waiting on you: a permission prompt, a question, a choice |
+| **Idle** | Finished its turn and ready for a follow-up prompt |
+| **Completed / Failed / Stopped** | Ended successfully, ended with an error, or stopped by you |
+
+Sessions that need you **move to the top automatically**, so you don't have to
+check each one to find out which is waiting.
+
+The sessions are run by a per-user **supervisor process**, separate from your
+terminal. You can close Agent View, or the terminal, and the work continues.
+Open `claude agents` again later and the sessions are still listed.
+
+### Starting background sessions
+
+There are three ways in, depending on where you are:
+
+```bash
+# 1. From the shell: start a task directly in the background
+claude --bg "run the test suite and fix anything that fails"
+claude --bg --name "nms-review" "review src/detector.py's NMS for edge cases"
+
+# 2. From Agent View: type a prompt in the input box and press Enter.
+#    Every prompt starts a new, independent session.
+
+# 3. From inside an ordinary interactive session:
+/bg                 # send this conversation to the background
+/bg <prompt>        # ...with a new instruction first
+```
+
+In a foreground session, pressing `←` on an empty prompt backgrounds that
+session and opens Agent View, so you can switch without leaving the terminal.
+
+### Checking on sessions: peek and attach
+
+There are two ways to look at a session:
+
+- **Peek** (`Space`) opens a side panel showing the session's latest output or
+  question. You can type a reply and press `Enter`, or press a number key for a
+  multiple-choice question, without leaving the list.
+- **Attach** (`Enter` or `→`) opens the full interactive session. Claude posts a
+  recap of what happened while you were away. Press `←` on an empty prompt (or
+  `/exit`) to detach again. **Detaching never stops the session.**
+
+Most-used keys in Agent View:
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move between sessions |
+| `Space` | Peek at the selected session |
+| `Enter` / `→` | Attach (or dispatch, if the input box has text) |
+| `Ctrl+Enter` | Dispatch and attach immediately |
+| `Ctrl+R` | Rename a session |
+| `Ctrl+S` | Group by state or by directory |
+| `Ctrl+X` | Stop a session (press again within 2 s to delete it) |
+| `?` | Show every shortcut |
+
+Typing in the input box also filters the list: `s:blocked` shows everything
+waiting on you, and `s:working` shows what is still running.
+
+From a plain shell, the same sessions can be scripted:
+
+```bash
+claude agents --json        # machine-readable session list
+claude logs <id>            # recent output of one session
+claude attach <id>          # attach from this terminal
+claude stop <id>            # stop a session
+```
+
+### Parallel work stays isolated: git worktrees
+
+This makes it safe to run several sessions against one repository. **Before a
+background session edits a file, it moves into its own
+[git worktree](https://code.claude.com/docs/en/worktrees)** under
+`.claude/worktrees/`, on its own branch. Two sessions editing `src/detector.py`
+at the same time are working on two separate copies, so neither overwrites the
+other or your own working copy. When the session finishes, it commits its work
+and (when there is a remote) pushes the branch. For code tasks it can open a
+draft PR. It never force-pushes and never merges into `main`.
+
+`.claude/worktrees/` is listed in this repo's `.gitignore` for that reason.
+
+### How I use it on this repository
+
+Much of the work on this project splits into independent tasks, which suits
+Agent View well:
+
+| Background session | Why it runs well unattended |
+|---|---|
+| `"run python -m pytest and fix any failure"` | 130 tests, ~6 s, no camera or GPU, so Claude can check its own fix |
+| `"review src/video_stream.py's stall handling against CLAUDE.md"` | Read-only review; the result is waiting when I come back |
+| `"check every number in docs/ against the committed results/ tables"` | Long and tedious by hand, and easy to verify afterwards |
+| `"add a test for --classes with an unknown class name"` | Small, self-contained, and ends on a runnable test |
+
+Each session reads [`CLAUDE.md`](CLAUDE.md) at startup, so every one of them
+gets the same project rules: raw 0–255 BGR input, the two-thread capture design,
+the two COCO id spaces, and the measurement discipline. I don't have to repeat
+them in each prompt.
+
+**One rule to follow here: never run benchmarks in parallel with other
+sessions.** Every FPS number in this README assumes an otherwise idle CPU, and
+a benchmark next to a background compile once measured 15.3 FPS where an idle
+machine measured 25.6 (see [Troubleshooting](#troubleshooting)). Several agents
+running tests at once cause exactly that kind of contention. Run
+`python -m src.benchmark` **on its own**, after the other sessions have
+finished or been stopped. Tests, reviews and documentation are fine in
+parallel; timing measurements are not.
+
+### Benefits
+
+- **Parallelism without juggling terminals.** Several tasks run at once, and one
+  screen shows all of them, instead of a tab per session that you have to
+  remember to check.
+- **You're only interrupted when needed.** Sessions that need input rise to the
+  top, and working sessions carry on without you. Your attention goes to
+  decisions, not to watching progress.
+- **Status at a glance.** The per-row summary tells you what each session is
+  doing or what it produced without opening the full transcript.
+- **Quick replies with peek.** Approving a permission or answering a question
+  takes a keystroke from the list, without a full context switch.
+- **Work survives the terminal.** The supervisor keeps sessions running after
+  you close Agent View, and brings back a session whose process exits
+  unexpectedly. Long tasks aren't tied to one terminal window.
+- **Safe concurrent edits.** Worktree isolation means parallel sessions can't
+  overwrite each other or your uncommitted changes, and each session's result
+  lands on a separate branch that you can review.
+- **Reviewable output.** Finished work arrives as commits on a branch (or a
+  draft PR), so it goes through the same review as any other change rather than
+  appearing silently in your working copy.
+- **Scriptable.** `claude agents --json` and `claude logs` let you check on
+  sessions from the shell or from your own tooling.
+- **Consistent context.** Every session loads the same `CLAUDE.md`, so parallel
+  agents follow the same project conventions.
+
+### Things to keep in mind
+
+- It is a research preview, so behaviour and shortcuts may change between
+  Claude Code releases.
+- Parallel sessions compete for CPU, which matters a great deal for a project
+  whose main output is an FPS number (see above).
+- Deleting a session from Agent View also removes its worktree, including
+  uncommitted changes. It refuses if the worktree has unpushed commits, but
+  review or push a session's branch before deleting it.
+- A finished session that has been left unattended for an hour has its process
+  stopped to free resources. The conversation stays on disk and resumes when
+  you reply.
+- To turn it off: `CLAUDE_CODE_DISABLE_AGENT_VIEW=1`, or
+  `"disableAgentView": true` in settings.
+
+Further reading: [Agent View documentation](https://code.claude.com/docs/en/agent-view)
+· [Anthropic's announcement](https://claude.com/blog/agent-view-in-claude-code).
+
 ## Licence
 
 Code in this repository: **MIT** — see [LICENSE](LICENSE).
