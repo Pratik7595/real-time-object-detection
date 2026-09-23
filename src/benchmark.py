@@ -39,6 +39,27 @@ DEFAULT_FRAMES = 300
 DEFAULT_WARMUP = 30
 
 
+def _positive_int(text: str) -> int:
+    """argparse type for a frame count that must be > 0.
+
+    Neither --frames nor --warmup reaches config.validate(). Zero is the one
+    that matters: it summarises an empty history and writes a table of 0.0 FPS
+    into results/, which reads as a measured result.
+    """
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {value}")
+    return value
+
+
+def _non_negative_int(text: str) -> int:
+    """argparse type for --warmup: 0 is legitimate (measure from frame 0)."""
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be 0 or greater, got {value}")
+    return value
+
+
 class ResourceSampler:
     """Polls process CPU% and RSS on a background thread during a run.
 
@@ -49,6 +70,9 @@ class ResourceSampler:
 
     def __init__(self, interval: float = 0.1) -> None:
         self.interval = interval
+        # Set in __enter__, and only if psutil imports. Declared here so the
+        # constructor shows every attribute the class has.
+        self._proc: "psutil.Process | None" = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self.cpu_percent = 0.0
@@ -70,12 +94,17 @@ class ResourceSampler:
         return self
 
     def _run(self) -> None:
+        import psutil
+
         while not self._stop.wait(self.interval):
             try:
                 self.rss_peak_mb = max(
                     self.rss_peak_mb, self._proc.memory_info().rss / 1e6
                 )
-            except Exception:
+            except psutil.Error as exc:
+                # Stop sampling, but say so: a silent stop leaves rss_peak_mb
+                # looking measured when it covers only part of the run.
+                print(f"note: RSS sampling stopped ({exc})", file=sys.stderr)
                 return
 
     def __exit__(self, *exc: object) -> None:
@@ -288,13 +317,6 @@ def _fp32_base(model: Path) -> Path:
     return model
 
 
-def _fp32_base(model: Path) -> Path:
-    """The unquantised sibling of `model`, used as the ablation's "before"."""
-    if "_int8" in model.stem:
-        return model.with_name(model.stem.replace("_int8", "") + model.suffix)
-    return model
-
-
 def sweep_ablation(args: argparse.Namespace, model: Path) -> list[BenchResult]:
     """Cumulative optimisations: each row adds one change to the row above."""
     # Note on reading this table: rows run in order and the machine heats up as
@@ -302,8 +324,6 @@ def sweep_ablation(args: argparse.Namespace, model: Path) -> list[BenchResult]:
     # an earlier one. --settle bounds that, but for a difference of a few
     # percent (row C) the ordering still matters more than the change does.
     # Anything at that magnitude was re-checked with an interleaved A/B.
-    # The shipped default is INT8, but an ablation that starts from the finished
-    # article measures nothing, so row A walks back to the FP32 weights.
     fp32 = _fp32_base(model)
     int8 = fp32.with_name(f"{fp32.stem}_int8.onnx")
     if not fp32.exists():
@@ -494,10 +514,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--source", default=str(DEFAULT_SOURCE))
     parser.add_argument("--model", default=str(cfg.model.path))
-    parser.add_argument("--frames", type=int, default=DEFAULT_FRAMES)
+    parser.add_argument("--frames", type=_positive_int, default=DEFAULT_FRAMES)
     parser.add_argument(
         "--warmup",
-        type=int,
+        type=_non_negative_int,
         default=DEFAULT_WARMUP,
         help="Frames run but excluded from the summary.",
     )
@@ -546,7 +566,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settle(model if model.exists() else Path(args.model), args.imgsz, args.settle)
         results = sweep(args, model)
-    except (ModelNotFoundError, CameraError) as exc:
+    except (ModelNotFoundError, CameraError, ValueError) as exc:
+        # ValueError: Detector validates input size and preprocess_mode itself,
+        # since benchmark.py builds one directly rather than via config.py.
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
