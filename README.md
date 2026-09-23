@@ -370,6 +370,59 @@ were not in front of the camera. [docs/DEMO_SHOTLIST.md](docs/DEMO_SHOTLIST.md) 
 checklist of objects to hold up while recording the demo, which is the honest
 way to demonstrate the rest.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    SRC[/"Source<br/>webcam · video · image"/]
+    CFG["config.py<br/>config.yaml + CLI overrides"]
+
+    subgraph T1["Capture thread · video_stream.py"]
+        CAP["cv2.VideoCapture<br/>adaptive backend → CAP_ANY"]
+        BUF[("Frame buffer<br/>camera: keep newest, drop stale<br/>file: block until consumed")]
+        CAP --> BUF
+    end
+
+    subgraph T2["Main thread · main.py"]
+        direction LR
+        subgraph DET["detector.py"]
+            PRE["preprocess<br/>letterbox, raw 0-255 BGR"]
+            INF["inference<br/>ONNX Runtime, CPU"]
+            POST["postprocess<br/>grid decode + per-class NMS"]
+            PRE --> INF --> POST
+        end
+        REN["render · visualizer.py<br/>boxes, labels, HUD"]
+        POST -- "detections" --> REN
+    end
+
+    SRC --> CAP
+    BUF -- "read()" --> PRE
+    BUF -. "skipped frames when --infer-every > 1<br/>(last boxes reused)" .-> REN
+    REN --> WIN["cv2 window"]
+    REN --> REC["--record MP4"]
+    CFG --> T2
+    MET["metrics.py<br/>times capture · preprocess · inference<br/>· postprocess · render"] -.-> T2
+    MET --> CSV["results/run_*.csv"]
+    MODEL[("yolox_tiny_int8.onnx")] --> INF
+```
+
+Capture runs on its own thread; everything else stays on the main thread,
+because OpenCV's window must own the main thread on macOS. `metrics.py` is
+shared by `main`, `benchmark` and `evaluate`, so all three time the same five
+stages the same way.
+
+The three model files come from different places:
+
+```mermaid
+flowchart LR
+    DL["download_weights.py<br/>SHA-256 pinned"] --> FP32[("yolox_tiny.onnx<br/>FP32, fixed 416")]
+    FP32 --> Q["quantize.py<br/>static INT8, assets/calib/"]
+    Q --> INT8[("yolox_tiny_int8.onnx<br/>default")]
+    INT8 --> MD["make_dynamic.py"]
+    FP32 --> MD
+    MD --> DYN[("*_dynamic.onnx<br/>any --imgsz")]
+```
+
 ## Project structure
 
 ```
