@@ -139,11 +139,15 @@ def run_detections(
         path = IMAGES_DIR / meta["file_name"]
         frame = cv2.imread(str(path), cv2.IMREAD_COLOR)
         if frame is None:
-            print(f"warning: could not read {path.name}, skipping", file=sys.stderr)
+            # Newline first: the \r progress line below would otherwise
+            # overwrite this, and an unreadable image changes the reported N.
+            print(f"\nwarning: could not read {path.name}, skipping", file=sys.stderr)
             continue
         per_image[meta["id"]] = detector.detect(frame)
         if not quiet and (i % 25 == 0 or i == len(images)):
-            print(f"\r  detecting {i}/{len(images)}", end="")
+            # flush: \r output is pipe-buffered when redirected, so without it
+            # a long pass shows no progress at all until it finishes.
+            print(f"\r  detecting {i}/{len(images)}", end="", flush=True)
     if not quiet:
         print()
     return per_image
@@ -292,6 +296,11 @@ def format_report(
     pr_conf: float,
     n_images: int,
 ) -> str:
+    """The Markdown report. `classes` is rendered in the order given.
+
+    The caller sorts, because the CSV written from the same run has to use that
+    same order and sorting in both places is how the two drift apart.
+    """
     out = ["# Accuracy evaluation", ""]
     out.append(
         f"**Source: COCO val2017 subset, N={n_images} labelled images. "
@@ -329,21 +338,26 @@ def format_report(
         "| Class | GT | TP | FP | FN | Precision | Recall | F1 |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    for m in sorted(classes, key=lambda c: (-c.support, c.name)):
+    for m in classes:
         out.append(
             f"| {m.name} | {m.support} | {m.tp} | {m.fp} | {m.fn} | "
             f"{m.precision:.3f} | {m.recall:.3f} | {m.f1:.3f} |"
         )
 
-    total_tp = sum(m.tp for m in classes)
-    total_fp = sum(m.fp for m in classes)
-    total_fn = sum(m.fn for m in classes)
-    micro_p = total_tp / (total_tp + total_fp) if (total_tp + total_fp) else 0.0
-    micro_r = total_tp / (total_tp + total_fn) if (total_tp + total_fn) else 0.0
-    micro_f1 = 2 * micro_p * micro_r / (micro_p + micro_r) if (micro_p + micro_r) else 0.0
+    # The micro-average *is* a ClassMetrics, summed rather than per-class, so
+    # it uses the same precision/recall/F1 definitions as every row above it
+    # instead of restating them -- including the zero-guards.
+    micro = ClassMetrics(
+        name="micro-average",
+        support=sum(m.support for m in classes),
+        tp=sum(m.tp for m in classes),
+        fp=sum(m.fp for m in classes),
+        fn=sum(m.fn for m in classes),
+    )
     out += [
-        f"| **micro-average** | {sum(m.support for m in classes)} | {total_tp} | "
-        f"{total_fp} | {total_fn} | {micro_p:.3f} | {micro_r:.3f} | {micro_f1:.3f} |",
+        f"| **{micro.name}** | {micro.support} | {micro.tp} | "
+        f"{micro.fp} | {micro.fn} | {micro.precision:.3f} | "
+        f"{micro.recall:.3f} | {micro.f1:.3f} |",
         "",
     ]
     return "\n".join(out)
@@ -456,7 +470,12 @@ def main(argv: list[str] | None = None) -> int:
         dets_per_image = len(detections) / max(1, len(per_image))
         sweep.append((conf, coco_map(detections, gt_path), dets_per_image))
 
-    classes = per_class_pr(per_image, ground_truth, conf=args.pr_conf)
+    # Sorted once here, not in each writer: the .md and .csv come from the same
+    # run and must not disagree on row order.
+    classes = sorted(
+        per_class_pr(per_image, ground_truth, conf=args.pr_conf),
+        key=lambda c: (-c.support, c.name),
+    )
     report = format_report(
         header, map_scores, classes, sweep, args.pr_conf, n_scored
     )
@@ -469,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
     with csv_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(["class", "support", "tp", "fp", "fn", "precision", "recall", "f1"])
-        for m in sorted(classes, key=lambda c: (-c.support, c.name)):
+        for m in classes:
             writer.writerow(
                 [
                     m.name, m.support, m.tp, m.fp, m.fn,
