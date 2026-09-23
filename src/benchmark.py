@@ -139,6 +139,16 @@ class BenchResult:
     detections_mean: float
     stage_ms: dict[str, float] = field(default_factory=dict)
 
+    @property
+    def compute_ms(self) -> float:
+        """Sum of the five stage means -- the per-frame work, not wall time.
+
+        The tables still label this column "Total ms", which is what every
+        committed table under results/ carries. main.py's HUD calls the same
+        quantity "compute"; renaming the column would mean regenerating those.
+        """
+        return sum(self.stage_ms.get(s, 0.0) for s in STAGES)
+
     def flat(self) -> dict[str, object]:
         row = {k: v for k, v in asdict(self).items() if k != "stage_ms"}
         row.update({f"{s}_ms": round(self.stage_ms.get(s, 0.0), 3) for s in STAGES})
@@ -441,8 +451,8 @@ def machine_header() -> list[str]:
     return lines
 
 
-def print_table(results: list[BenchResult]) -> str:
-    """Render the results as a Markdown table (printed and saved verbatim)."""
+def format_summary_table(results: list[BenchResult]) -> str:
+    """The headline FPS/CPU/RAM table, as Markdown."""
     header = (
         "| Config | Model | imgsz | Capture | FPS mean | FPS median | FPS p95 | "
         "FPS p5 | Infer ms | Total ms | CPU % | Peak RSS MB | Dets/frame |"
@@ -451,7 +461,6 @@ def print_table(results: list[BenchResult]) -> str:
     rows = [header, sep]
     skipping = False
     for r in results:
-        total = sum(r.stage_ms.get(s, 0.0) for s in STAGES)
         # With frame skipping the per-frame cost is bimodal -- skipped frames do
         # almost no work, so their "FPS" is in the thousands and the median and
         # p95 of that distribution describe nothing real. Mean is throughput
@@ -465,7 +474,7 @@ def print_table(results: list[BenchResult]) -> str:
             f"| {r.label} | {r.model} | {r.imgsz} | {r.capture} | "
             f"{r.fps_mean:.1f} | {median} | {p95} | "
             f"{p5} | {r.stage_ms.get('inference', 0):.1f} | "
-            f"{total:.1f} | {r.cpu_percent:.0f} | {r.rss_peak_mb:.0f} | "
+            f"{r.compute_ms:.1f} | {r.cpu_percent:.0f} | {r.rss_peak_mb:.0f} | "
             f"{r.detections_mean:.2f} |"
         )
     if skipping:
@@ -476,15 +485,22 @@ def print_table(results: list[BenchResult]) -> str:
             "(frames / wall clock) and is still valid. Note also that inference "
             "ms is the average over *all* frames, including the skipped ones."
         )
+    return "\n".join(rows)
 
+
+def format_stage_table(results: list[BenchResult]) -> str:
+    """Per-stage mean latency, as Markdown."""
     stage_header = "| Config | " + " | ".join(f"{s} ms" for s in STAGES) + " | total ms |"
     stage_rows = [stage_header, "|" + "---|" * (len(STAGES) + 2)]
     for r in results:
-        total = sum(r.stage_ms.get(s, 0.0) for s in STAGES)
         cells = " | ".join(f"{r.stage_ms.get(s, 0.0):.2f}" for s in STAGES)
-        stage_rows.append(f"| {r.label} | {cells} | {total:.2f} |")
+        stage_rows.append(f"| {r.label} | {cells} | {r.compute_ms:.2f} |")
+    return "\n".join(stage_rows)
 
-    return "\n".join(rows) + "\n\n" + "\n".join(stage_rows)
+
+def format_tables(results: list[BenchResult]) -> str:
+    """Both tables, in the order they are printed and saved."""
+    return format_summary_table(results) + "\n\n" + format_stage_table(results)
 
 
 def write_outputs(results: list[BenchResult], out_dir: Path, tag: str) -> tuple[Path, Path]:
@@ -502,7 +518,7 @@ def write_outputs(results: list[BenchResult], out_dir: Path, tag: str) -> tuple[
     body.extend(machine_header())
     body.append("```")
     body.append("")
-    body.append(print_table(results))
+    body.append(format_tables(results))
     md_path.write_text("\n".join(body) + "\n", encoding="utf-8")
     return csv_path, md_path
 
@@ -576,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print()
-    print(print_table(results))
+    print(format_tables(results))
 
     csv_path, md_path = write_outputs(results, cfg.output.results_dir, tag)
     print(f"\nwrote {csv_path}\n      {md_path}")
