@@ -213,6 +213,48 @@ Three conclusions:
    measures this code. That is precisely why `benchmark.py` defaults to a
    deterministic file source, and why the headline numbers in §2 come from there.
 
+### 3.1.1 Capture-resolution sweep
+
+Asking the camera for three different resolutions, 300 frames each, after the
+standard 20 s settle:
+
+```bash
+python -m src.benchmark --capture-sweep --source 0
+```
+
+Full table: `results/benchmark_capture.md`. The headline rows:
+
+| Requested | Camera delivered | FPS mean | capture ms | inference ms | CPU % | Peak RSS |
+|---|---|---|---|---|---|---|
+| 640x480 | 640x480 | 29.9 | 9.52 | 21.24 | 373 | 124 MB |
+| 960x540 | **640x480** | 29.9 | 10.06 | 20.56 | 380 | 128 MB |
+| 1280x720 | 1280x720 | 29.9 | 8.35 | 22.24 | 423 | 136 MB |
+
+Two caveats, both of which say more about the hardware than about this code.
+
+**The camera silently substitutes resolutions it does not support.** This one
+refuses 960x540 and hands back 640x480 without an error. The sweep asks for
+three resolutions and measures two. `run_case` detects the substitution and
+amends the row label — the middle row reads `capture 960x540 (camera gave
+640x480)` — because before that fix the table showed two differently-named rows
+that had in fact measured the same thing. Another webcam will substitute
+differently, or not at all, so this row is not a property of the project.
+
+**All three rows are pinned at 29.9 FPS, which is the sensor, not the
+detector.** This is §3.1's conclusion arriving from a different direction:
+capture costs 8-10 ms per frame here and inference ~21 ms, so a 33.4 ms frame
+is bounded by the camera's 30 fps interval in every configuration. The sweep
+therefore cannot answer "is a bigger capture slower?" — the camera's frame
+interval absorbs the difference. Note the contrast with the 48.2 ms capture in
+§3.1: same camera, darker room, auto-exposure halved it to 15 fps.
+
+What does move with resolution is cost rather than speed: CPU 373% → 423% and
+peak RSS 124 → 136 MB from 640x480 to 1280x720. That is one sweep, in sweep
+order, and per this document's own rule a few percent is below what a single
+run can resolve — the CPU and RSS figures were not re-checked with a
+counterbalanced A/B, and the ~1 ms spread in `capture ms` (which runs the
+*wrong* way, 1280x720 being the fastest) is noise rather than signal.
+
 ### 3.2 Cost of `--record`
 
 The MP4 writer's cost depends heavily on what is being encoded, so a single
