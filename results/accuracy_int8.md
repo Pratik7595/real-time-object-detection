@@ -6,7 +6,7 @@
 model      : yolox_tiny_int8.onnx
 input size : 416x416
 nms iou    : 0.45
-images     : 300 (COCO val2017 subset)
+images     : 300 of 300 (COCO val2017 subset)
 providers  : CPUExecutionProvider
 ```
 

@@ -51,6 +51,31 @@ MAP_CONF = 0.001
 COCO_MAX_DETS = 100
 
 
+def _positive_int(text: str) -> int:
+    """argparse type for an image count that must be > 0.
+
+    --limit never reaches config.validate(). Zero is the one that matters: it
+    is falsy, so it used to fall through the filter and score the full subset
+    while the caller believed they had asked for none.
+    """
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {value}")
+    return value
+
+
+def _unit_float(text: str) -> float:
+    """argparse type for a threshold in (0, 1).
+
+    These bypass config.validate(), which owns the same check for the YAML
+    path. A --pr-conf of 30 instead of 0.30 otherwise writes a table of zeros.
+    """
+    value = float(text)
+    if not 0.0 < value < 1.0:
+        raise argparse.ArgumentTypeError(f"must be in (0, 1), got {value}")
+    return value
+
+
 @dataclass
 class ClassMetrics:
     name: str
@@ -324,6 +349,24 @@ def format_report(
     return "\n".join(out)
 
 
+def restrict_ground_truth(ground_truth: dict, image_ids: set[int]) -> dict:
+    """Ground truth narrowed to `image_ids`, images and annotations together.
+
+    pycocotools scores every image present in the GT file, so an image that was
+    listed but never run counts as pure recall loss. Anything dropped from the
+    run -- by --limit, or because cv2 could not decode it -- has to be dropped
+    from the ground truth as well, or the mAP is measured against frames that
+    were never inferred.
+    """
+    return {
+        **ground_truth,
+        "images": [im for im in ground_truth["images"] if im["id"] in image_ids],
+        "annotations": [
+            a for a in ground_truth["annotations"] if a["image_id"] in image_ids
+        ],
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     cfg = load_config()
     parser = argparse.ArgumentParser(
@@ -331,21 +374,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--model", default=str(cfg.model.path))
     parser.add_argument("--imgsz", type=int, default=cfg.model.input_size[0])
-    parser.add_argument("--iou", type=float, default=cfg.detection.iou_threshold)
+    parser.add_argument("--iou", type=_unit_float, default=cfg.detection.iou_threshold)
     parser.add_argument(
         "--pr-conf",
-        type=float,
+        type=_unit_float,
         default=cfg.detection.conf_threshold,
         help="Operating point for the precision/recall/F1 table.",
     )
     parser.add_argument(
         "--conf-sweep",
-        type=float,
+        type=_unit_float,
         nargs="*",
         default=[0.15, 0.25, 0.30, 0.40, 0.60],
         help="Thresholds for the sensitivity table. Empty list disables it.",
     )
-    parser.add_argument("--limit", type=int, default=None, help="Use fewer images.")
+    parser.add_argument(
+        "--limit", type=_positive_int, default=None, help="Use fewer images."
+    )
     args = parser.parse_args(argv)
 
     require_subset()
@@ -357,16 +402,8 @@ def main(argv: list[str] | None = None) -> int:
     with SUBSET_JSON.open("r", encoding="utf-8") as fh:
         ground_truth = json.load(fh)
     images = ground_truth["images"]
-    if args.limit:
+    if args.limit is not None:
         images = images[: args.limit]
-        wanted = {im["id"] for im in images}
-        ground_truth = {
-            **ground_truth,
-            "images": images,
-            "annotations": [
-                a for a in ground_truth["annotations"] if a["image_id"] in wanted
-            ],
-        }
 
     try:
         detector = Detector(
@@ -384,7 +421,6 @@ def main(argv: list[str] | None = None) -> int:
         f"model      : {model_path.name}",
         f"input size : {args.imgsz}x{args.imgsz}",
         f"nms iou    : {args.iou}",
-        f"images     : {len(images)} (COCO val2017 subset)",
         f"providers  : {', '.join(detector.providers)}",
     ]
     print("\n".join(header))
@@ -392,8 +428,21 @@ def main(argv: list[str] | None = None) -> int:
 
     per_image = run_detections(detector, images)
 
-    # A filtered GT file is needed when --limit is in play; write it either way
-    # so pycocotools always scores against exactly the images we ran.
+    # The image count is reported after detection, not before: an image cv2
+    # cannot decode is skipped, and a header written up front would publish the
+    # number requested rather than the number scored.
+    n_scored = len(per_image)
+    scored_line = f"images     : {n_scored} of {len(images)} (COCO val2017 subset)"
+    if n_scored != len(images):
+        scored_line += f" -- {len(images) - n_scored} unreadable, excluded"
+    # Inserted where it has always sat, above `providers`, so the written
+    # report keeps the field order every committed table uses.
+    header.insert(3, scored_line)
+    print(scored_line)
+
+    # Written every run, not just under --limit, so pycocotools always scores
+    # against exactly the images that were inferred.
+    ground_truth = restrict_ground_truth(ground_truth, set(per_image))
     gt_path = SUBSET_DIR / "_eval_gt.json"
     with gt_path.open("w", encoding="utf-8") as fh:
         json.dump(ground_truth, fh)
@@ -409,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
 
     classes = per_class_pr(per_image, ground_truth, conf=args.pr_conf)
     report = format_report(
-        header, map_scores, classes, sweep, args.pr_conf, len(images)
+        header, map_scores, classes, sweep, args.pr_conf, n_scored
     )
 
     cfg.output.results_dir.mkdir(parents=True, exist_ok=True)
