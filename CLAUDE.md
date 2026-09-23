@@ -21,7 +21,7 @@ python -m src.main --list-classes
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest                                  # 91 tests, ~6s, no camera or GPU
+python -m pytest                                  # 130 tests, ~6s, no camera or GPU
 python -m pytest tests/test_nms.py                # one file
 python -m pytest tests/test_detector.py::test_normalisation_would_break_the_model   # one test
 python -m pytest -k "nms and not batched"
