@@ -180,6 +180,14 @@ python -m src.benchmark --threads-sweep
 python -m src.benchmark --capture-sweep --source 0
 ```
 
+Each run writes a timestamped CSV and Markdown pair to `results/`; the curated
+tables are committed there too, including
+[`results/benchmark_capture.md`](results/benchmark_capture.md) for the capture
+sweep. Read that one with its caveats: every row is pinned at the webcam's own
+frame rate rather than the detector's, and the camera under test silently
+substitutes 640x480 for the 960x540 it does not support. Both are written up in
+[§3.1.1 of the performance analysis](docs/PERFORMANCE_ANALYSIS.md).
+
 ```bash
 # Accuracy on labelled data: ~50 MB of images + a one-time 241 MB annotation download
 pip install -r requirements-dev.txt
