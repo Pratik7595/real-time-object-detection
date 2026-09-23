@@ -153,6 +153,14 @@ def test_stage_table_names_every_stage():
         assert f"{stage} ms" in header
 
 
+def test_both_tables_call_the_stage_sum_compute():
+    # Not "total": it excludes nothing, but it is the sum of the stage means
+    # rather than frame wall time, and main.py's HUD calls it compute. The
+    # committed tables under results/ carry these headers verbatim.
+    assert "| Compute ms |" in format_summary_table([_result()]).splitlines()[0]
+    assert "| compute ms |" in format_stage_table([_result()]).splitlines()[0]
+
+
 def test_stage_table_reports_the_compute_sum_in_its_last_column():
     # Hardcoded, not compute_ms: comparing the table against the property it is
     # rendering would pass however wrong that property became.

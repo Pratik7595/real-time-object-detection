@@ -143,9 +143,9 @@ class BenchResult:
     def compute_ms(self) -> float:
         """Sum of the five stage means -- the per-frame work, not wall time.
 
-        The tables still label this column "Total ms", which is what every
-        committed table under results/ carries. main.py's HUD calls the same
-        quantity "compute"; renaming the column would mean regenerating those.
+        Named to match main.py's HUD, which calls the same quantity "compute".
+        It was "Total ms" until the committed tables' headers were renamed to
+        agree; the numbers under it did not change, and never needed to.
         """
         return sum(self.stage_ms.get(s, 0.0) for s in STAGES)
 
@@ -461,7 +461,7 @@ def format_summary_table(results: list[BenchResult]) -> str:
     """The headline FPS/CPU/RAM table, as Markdown."""
     header = (
         "| Config | Model | imgsz | Capture | FPS mean | FPS median | FPS p95 | "
-        "FPS p5 | Infer ms | Total ms | CPU % | Peak RSS MB | Dets/frame |"
+        "FPS p5 | Infer ms | Compute ms | CPU % | Peak RSS MB | Dets/frame |"
     )
     sep = "|" + "---|" * 13
     rows = [header, sep]
@@ -496,7 +496,7 @@ def format_summary_table(results: list[BenchResult]) -> str:
 
 def format_stage_table(results: list[BenchResult]) -> str:
     """Per-stage mean latency, as Markdown."""
-    stage_header = "| Config | " + " | ".join(f"{s} ms" for s in STAGES) + " | total ms |"
+    stage_header = "| Config | " + " | ".join(f"{s} ms" for s in STAGES) + " | compute ms |"
     stage_rows = [stage_header, "|" + "---|" * (len(STAGES) + 2)]
     for r in results:
         cells = " | ".join(f"{r.stage_ms.get(s, 0.0):.2f}" for s in STAGES)

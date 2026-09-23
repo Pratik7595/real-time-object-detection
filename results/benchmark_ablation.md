@@ -9,7 +9,7 @@ ram      : 8.3 GB
 ort      : 1.29.0
 ```
 
-| Config | Model | imgsz | Capture | FPS mean | FPS median | FPS p95 | FPS p5 | Infer ms | Total ms | CPU % | Peak RSS MB | Dets/frame |
+| Config | Model | imgsz | Capture | FPS mean | FPS median | FPS p95 | FPS p5 | Infer ms | Compute ms | CPU % | Peak RSS MB | Dets/frame |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | A baseline FP32 (naive preprocess, per-frame alloc) | yolox_tiny.onnx | 416 | 640x480 | 20.1 | 20.6 | 23.7 | 15.9 | 44.0 | 49.7 | 399 | 144 | 9.90 |
 | B + preallocated preprocess buffers | yolox_tiny.onnx | 416 | 640x480 | 21.6 | 22.8 | 24.8 | 16.4 | 43.2 | 46.3 | 399 | 141 | 9.90 |
@@ -19,7 +19,7 @@ ort      : 1.29.0
 
 > `n/a`: with `--infer-every > 1` the per-frame time is bimodal, so median/p95 of per-frame FPS are meaningless. Mean is throughput (frames / wall clock) and is still valid. Note also that inference ms is the average over *all* frames, including the skipped ones.
 
-| Config | capture ms | preprocess ms | inference ms | postprocess ms | render ms | total ms |
+| Config | capture ms | preprocess ms | inference ms | postprocess ms | render ms | compute ms |
 |---|---|---|---|---|---|---|
 | A baseline FP32 (naive preprocess, per-frame alloc) | 0.03 | 3.53 | 43.97 | 1.75 | 0.44 | 49.71 |
 | B + preallocated preprocess buffers | 0.03 | 1.04 | 43.17 | 1.61 | 0.44 | 46.28 |
