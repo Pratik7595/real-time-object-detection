@@ -512,6 +512,15 @@ it.
 **`libGL.so.1: cannot open shared object file` (Linux)**
 `sudo apt install -y libgl1 libglib2.0-0`.
 
+## Conclusion
+
+YOLOX-Tiny through ONNX Runtime delivers real-time detection of all 80 COCO
+classes on a laptop CPU: the INT8 default sustains 38.0 FPS at 416×416 on an
+i5-1135G7, 2.5× the 15 FPS target, with no GPU and no PyTorch. Quantisation
+bought 1.9× the frame rate over FP32 for 2.5 mAP@0.5:0.95 points (0.3315 vs
+0.3568 on 300 COCO val2017 images), and inference is now 87% of each frame, so
+further speed has to come from the model, not the pipeline around it.
+
 ## Licence
 
 Code in this repository: **MIT** — see [LICENSE](LICENSE).
