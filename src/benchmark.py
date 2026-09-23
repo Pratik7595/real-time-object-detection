@@ -192,6 +192,12 @@ def run_case(
     width, height = capture_size or (None, None)
     stream = VideoStream(source=source, width=width, height=height).start()
     actual_w, actual_h = stream.frame_size
+    if capture_size is not None and (actual_w, actual_h) != capture_size:
+        # A camera silently substitutes the nearest mode it supports, so a row
+        # labelled for the size that was *asked for* can be measuring something
+        # else entirely -- two rows of a capture sweep reading as different
+        # resolutions while both ran at 640x480. Say what actually happened.
+        label = f"{label} (camera gave {actual_w}x{actual_h})"
 
     metrics = Metrics(window=frames + warmup, keep_history=True)
     detections: list = []
