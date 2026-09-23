@@ -10,6 +10,14 @@ about 40 MB of wheels and the same command on x86_64 and ARM64. Everything also
 runs from a video file or a still image, so it is demonstrable on a machine with
 no camera.
 
+**How it works.** A background thread captures frames while the main thread runs
+the pipeline: letterbox the frame to the model's input size, run the bare YOLOX
+ONNX graph, decode its raw grid outputs into boxes, filter them with NumPy
+non-maximum suppression, and draw the results with a live FPS/latency overlay.
+Because ONNX Runtime returns only raw tensors, all pre- and post-processing lives
+in this repo rather than in a framework, and every stage is timed the same way by
+the app, the benchmark and the mAP evaluation so their numbers stay comparable.
+
 ![Detection output](results/sample_detection.png)
 
 *Boxes, class names, two-decimal confidence scores and the live FPS/latency HUD.
