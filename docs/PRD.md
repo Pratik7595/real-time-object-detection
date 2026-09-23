@@ -1,7 +1,8 @@
 # PRD / Technical Design — Real-Time Webcam Object Detection
 
-**Status:** draft, awaiting approval (Phase 1)
-**Date:** 2026-09-04
+**Status:** approved (Phase 1) and implemented. §0–§7 are the plan as approved
+and are deliberately left as written; §8 and §9 record where it changed.
+**Date:** 2026-09-04 · amendments last updated 2026-09-23
 
 ## 0. Scope and target machine
 
@@ -353,6 +354,9 @@ match the results is worth nothing. Numbers in
 | §4.6 INT8 expected "~1.5–2×, with some mAP loss", opt-in | **1.9×** at 416 (19.8 → 38.0 FPS), −2.5 mAP@0.5:0.95, model 20.2 MB → 5.2 MB | **Held**, at the top of the range — and promoted from opt-in to **the shipped default** (see below) |
 | §1 YOLOX-Tiny will clear 15 FPS at 416 | 19.8 FPS sustained, 23.0 live | **Held.** The Nano fallback was never needed |
 | Dependency budget included `tqdm` for download progress bars | Both download scripts print their own progress in three lines | **Dropped.** Five runtime dependencies, not six |
+| §3 One-slot buffer, unread frames *dropped* | Right for a camera, wrong for a file source, where a benchmark or evaluation has to see every frame | **Split by source type.** Camera keeps `drop_stale=True`; video/image files block the producer until each frame is consumed |
+| §3 Failure handling covers the camera failing to *open* | A camera that stalls *mid-run* returned the same `None` as a finished file, so a benchmark could stop at frame 40 of 300 and report the short run as complete | **Plan was inadequate.** `VideoStream.is_exhausted` separates the two. `main.py` warns and keeps going; `benchmark.py` raises, because timings from a stalled run are invalid |
+| §4.4 Per-class NMS via a class-offset trick | The offset was float32. At class 79 (~7.9e6) float32 spacing is 0.5 px, so box edges were rounded before the IoU test | **Fixed** by doing the offset in float64. Re-measured INT8 mAP@0.5:0.95 moved 0.3316 → 0.3315 |
 
 The two things I would tell someone starting this again: the pipeline is 93%
 inference, so optimising anything else is rearranging deck chairs; and on a thin

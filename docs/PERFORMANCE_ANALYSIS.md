@@ -60,6 +60,16 @@ first 30 frames, and reports the rest. Specifics that matter:
   FPS values. Averaging reciprocals overstates the result.
 - **p95 is the fast tail and p5 is the slow tail.** For a video pipeline the p5
   is the one users notice, so it is reported alongside.
+- **Compute ms is the sum of the five stage means**, not wall-clock time per
+  frame. It is the `Compute ms` column of every committed table (renamed from
+  `Total ms`; the numbers under it did not change). FPS mean, above, is the
+  wall-clock figure.
+- **A stalled source fails the run; an ended one does not.** A file that runs
+  out of frames is a legitimate short run. A camera that stops delivering
+  frames mid-run makes the timings invalid, so `benchmark.py` raises
+  (`capture stalled after N of M frames`) rather than publishing a table
+  measured over frames it never captured. An earlier version treated both the
+  same way, so a stall ended the run quietly and it was reported as complete.
 
 ### The thermal problem, and what was done about it
 
@@ -109,7 +119,7 @@ than 416 use the variable-input graph from `models/make_dynamic.py`.
 
 ### INT8 (shipped default)
 
-| Model input | Device | FPS mean | FPS median | FPS p95 | FPS p5 | Inference ms | Frame ms | CPU % | Peak RSS MB | Dets/frame |
+| Model input | Device | FPS mean | FPS median | FPS p95 | FPS p5 | Inference ms | Compute ms | CPU % | Peak RSS MB | Dets/frame |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 320×320 | CPU (i5-1135G7) | **53.7** | 54.4 | 66.3 | 44.1 | 16.27 | 18.57 | 396 | 105 | 8.80 |
 | **416×416** (shipped) | CPU (i5-1135G7) | **38.0** | 38.4 | 46.0 | 31.4 | 22.85 | 26.26 | 399 | 112 | 9.90 |
@@ -117,7 +127,7 @@ than 416 use the variable-input graph from `models/make_dynamic.py`.
 
 ### FP32, same sweep
 
-| Model input | FPS mean | FPS median | FPS p95 | FPS p5 | Inference ms | Frame ms | Peak RSS MB |
+| Model input | FPS mean | FPS median | FPS p95 | FPS p5 | Inference ms | Compute ms | Peak RSS MB |
 |---|---|---|---|---|---|---|---|
 | 320×320 | 32.4 | 33.0 | 42.4 | 24.9 | 28.75 | 30.81 | 129 |
 | 416×416 | 19.8 | 19.8 | 25.4 | 16.1 | 47.11 | 50.49 | 142 |
@@ -149,7 +159,7 @@ Same runs as §2. All values are milliseconds, mean over 300 frames.
 
 ### INT8 (shipped)
 
-| Configuration | capture | preprocess | inference | postprocess | render | **total** |
+| Configuration | capture | preprocess | inference | postprocess | render | **compute** |
 |---|---|---|---|---|---|---|
 | 320×320 | 0.12 | 0.60 | 16.27 | 1.14 | 0.44 | **18.57** |
 | 416×416 (shipped) | 0.03 | 1.22 | 22.85 | 1.71 | 0.46 | **26.26** |
@@ -157,7 +167,7 @@ Same runs as §2. All values are milliseconds, mean over 300 frames.
 
 ### FP32
 
-| Configuration | capture | preprocess | inference | postprocess | render | **total** |
+| Configuration | capture | preprocess | inference | postprocess | render | **compute** |
 |---|---|---|---|---|---|---|
 | 320×320 | 0.03 | 0.58 | 28.75 | 1.05 | 0.41 | **30.81** |
 | 416×416 | 0.03 | 1.20 | 47.11 | 1.72 | 0.44 | **50.49** |
@@ -222,7 +232,7 @@ standard 20 s settle:
 python -m src.benchmark --capture-sweep --source 0
 ```
 
-Full table: `results/benchmark_capture.md`. The headline rows:
+Raw output: [`results/benchmark_capture.md`](../results/benchmark_capture.md). The headline rows:
 
 | Requested | Camera delivered | FPS mean | capture ms | inference ms | CPU % | Peak RSS |
 |---|---|---|---|---|---|---|
@@ -295,7 +305,7 @@ Raw output: [`results/benchmark_ablation.md`](../results/benchmark_ablation.md)
 Rows are cumulative and start from unoptimised FP32, so row A is a genuine
 "before" rather than the shipped article.
 
-| # | Change | Model | FPS mean | Δ vs A | preprocess ms | inference ms | frame ms | Peak RSS MB |
+| # | Change | Model | FPS mean | Δ vs A | preprocess ms | inference ms | compute ms | Peak RSS MB |
 |---|---|---|---|---|---|---|---|---|
 | A | Baseline: allocate preprocessing buffers per frame | FP32 | 20.1 | — | 3.53 | 43.97 | 49.71 | 144 |
 | B | + preallocated buffers | FP32 | 21.6 | +7.5% | **1.04** | 43.17 | 46.28 | 141 |
@@ -466,13 +476,13 @@ Shipped INT8, at `conf=0.30`, `IoU=0.50`. Full table in
 
 | Class | GT | TP | FP | FN | Precision | Recall | F1 |
 |---|---|---|---|---|---|---|---|
-| person | 685 | 430 | 104 | 255 | 0.805 | 0.628 | 0.706 |
+| person | 685 | 430 | 104 | 255 | 0.805 | 0.628 | 0.705 |
 | chair | 119 | 43 | 35 | 76 | 0.551 | 0.361 | 0.437 |
 | book | 75 | 12 | 9 | 63 | 0.571 | 0.160 | 0.250 |
 | cup | 69 | 28 | 19 | 41 | 0.596 | 0.406 | 0.483 |
 | car | 67 | 37 | 15 | 30 | 0.712 | 0.552 | 0.622 |
 | bottle | 66 | 19 | 24 | 47 | 0.442 | 0.288 | 0.349 |
-| dining table | 48 | 26 | 28 | 22 | 0.482 | 0.542 | 0.510 |
+| dining table | 48 | 26 | 28 | 22 | 0.481 | 0.542 | 0.510 |
 | **micro-average** | **2145** | **1035** | **504** | **1110** | **0.673** | **0.483** | **0.562** |
 
 FP32 micro-average for comparison: **0.694 / 0.490 / 0.574**. Quantisation costs

@@ -77,6 +77,10 @@ Notes on that command:
   no ambiguity about whether a take was captured.
 - The first ~1 second is not in the file (that is the calibration window). Start
   your first shot after the dot appears.
+- `warning: no frame for 2s -- is the camera still connected?` means the camera
+  stalled, not that the run ended. The app keeps waiting and `q` still quits.
+  If the camera recovers, recording picks up again, but the clip now has a gap
+  in it, so re-shoot the take.
 
 For a version with fewer distractions, add a class filter:
 
