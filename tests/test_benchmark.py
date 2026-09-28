@@ -1,14 +1,17 @@
-"""Benchmark argument validation and table rendering.
+"""Benchmark argument validation, table rendering, and run_case bookkeeping.
 
-Pure string and argparse work -- no model, no weights, no camera, so this runs
-on a clean clone. The sweeps themselves are not covered here: they need weights
-and take minutes, which is what `python -m src.benchmark` is for.
+No model, no weights, no camera, so this runs on a clean clone: run_case is
+exercised with the detector and the source stubbed out. The sweeps themselves
+are not covered here: they need weights and take minutes, which is what
+`python -m src.benchmark` is for.
 """
 
 from __future__ import annotations
 
 import argparse
 
+import cv2
+import numpy as np
 import pytest
 
 from src.benchmark import (
@@ -21,6 +24,8 @@ from src.benchmark import (
     format_tables,
     main,
 )
+from src import benchmark
+from src.detector import set_opencv_threads
 from src.metrics import STAGES
 
 from pathlib import Path
@@ -187,3 +192,107 @@ def test_format_tables_joins_both_tables_in_print_order():
     summary = format_summary_table([_result()])
     stages = format_stage_table([_result()])
     assert combined == summary + "\n\n" + stages
+
+
+# --- run_case, with the model and the source stubbed out ---------------------
+
+
+class _StubDetector:
+    """Returns `dets_per_frame` detections on every frame, warm-up included."""
+
+    dets_per_frame = 2
+
+    def __init__(self, **kwargs):
+        pass
+
+    def warmup(self, n):
+        pass
+
+    def preprocess(self, frame):
+        return frame
+
+    def infer(self, blob):
+        return blob
+
+    def postprocess(self, raw):
+        return [object()] * self.dets_per_frame
+
+
+class _StubStream:
+    """An endless 64x48 black frame source."""
+
+    is_exhausted = False
+    frame_size = (64, 48)
+
+    def __init__(self, **kwargs):
+        pass
+
+    def start(self):
+        return self
+
+    def read(self):
+        return np.zeros((48, 64, 3), dtype=np.uint8)
+
+    def stop(self):
+        pass
+
+
+@pytest.fixture
+def stubbed(monkeypatch):
+    monkeypatch.setattr(benchmark, "Detector", _StubDetector)
+    monkeypatch.setattr(benchmark, "VideoStream", _StubStream)
+    monkeypatch.setattr(benchmark, "draw_detections", lambda frame, dets: None)
+    calls = []
+    monkeypatch.setattr(benchmark, "set_opencv_threads", calls.append)
+    return calls
+
+
+def _run(**overrides):
+    kwargs = dict(
+        label="stub",
+        source="unused",
+        frames=20,
+        warmup=10,
+        model_path=Path("unused.onnx"),
+        imgsz=416,
+    )
+    kwargs.update(overrides)
+    return benchmark.run_case(**kwargs)
+
+
+def test_dets_per_frame_leaves_out_the_warmup_frames(stubbed):
+    # Warm-up frames used to be added to the total but not to the divisor, so a
+    # steady 2 dets/frame read as 2 * (20 + 10) / 20 = 3.
+    result = _run(frames=20, warmup=10)
+    assert result.frames == 20
+    assert result.detections_mean == 2.0
+
+
+def test_dets_per_frame_with_no_warmup(stubbed):
+    assert _run(frames=20, warmup=0).detections_mean == 2.0
+
+
+def test_run_case_defaults_to_the_shipped_opencv_setting(stubbed):
+    """The sweeps call run_case without cv_threads, so its default is what every
+    "shipped" row is measured with. It must match config.yaml, which leaves
+    OpenCV alone after capping it measured slower."""
+    shipped = benchmark.load_config().runtime.opencv_threads
+    result = _run()
+    assert stubbed == [shipped]
+    assert result.cv_threads == shipped
+
+
+# --- set_opencv_threads -------------------------------------------------------
+
+
+def test_zero_threads_undoes_an_earlier_cap():
+    """The ablation caps OpenCV for row C and then runs rows D and E with 0.
+    If 0 did nothing, those rows would run capped while labelled uncapped."""
+    default = cv2.getNumThreads()
+    try:
+        set_opencv_threads(1)
+        assert cv2.getNumThreads() == 1
+        set_opencv_threads(0)
+        assert cv2.getNumThreads() == default
+    finally:
+        cv2.setNumThreads(default)

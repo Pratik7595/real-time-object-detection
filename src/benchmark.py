@@ -164,7 +164,7 @@ def run_case(
     imgsz: int,
     preprocess_mode: str = "prealloc",
     ort_threads: int = 0,
-    cv_threads: int = 2,
+    cv_threads: int = 0,
     infer_every: int = 1,
     conf: float = 0.30,
     iou: float = 0.45,
@@ -233,7 +233,11 @@ def run_case(
                     if draw:
                         draw_detections(frame, detections)
 
-                total_detections += len(detections)
+                # Counted over the same frames the summary keeps. Adding up the
+                # warm-up frames too, then dividing by the measured ones, inflated
+                # dets/frame by (frames + warmup) / frames -- +10% at 300 + 30.
+                if index >= warmup:
+                    total_detections += len(detections)
                 metrics.end_frame()
                 index += 1
     finally:

@@ -9,6 +9,7 @@ thing that makes a performance table worthless.
 from __future__ import annotations
 
 import csv
+import math
 import time
 from collections import deque
 from contextlib import contextmanager
@@ -28,11 +29,21 @@ STAGES: tuple[str, ...] = (
 
 
 def percentile(values: Sequence[float], pct: float) -> float:
-    """Nearest-rank percentile. No numpy dependency so tests stay trivial."""
+    """Nearest-rank percentile: the smallest value with at least `pct`% of the
+    data at or below it, i.e. rank ceil(pct/100 * n). No numpy dependency so
+    tests stay trivial.
+
+    This used to be round(x + 0.5), which is one rank high whenever pct*n/100 is
+    a whole number -- p95 of 20 values returned the maximum -- and, through
+    banker's rounding, not even consistently so. pct * n is multiplied before
+    dividing so integer inputs stay exact: 0.07 * 100 is 7.000000000000001 in
+    floating point, and ceil would turn that into rank 8.
+    """
     if not values:
         return 0.0
     ordered = sorted(values)
-    k = max(0, min(len(ordered) - 1, int(round(pct / 100.0 * len(ordered) + 0.5)) - 1))
+    rank = math.ceil(pct * len(ordered) / 100.0)
+    k = max(0, min(len(ordered) - 1, rank - 1))
     return ordered[k]
 
 

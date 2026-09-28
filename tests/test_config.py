@@ -58,6 +58,19 @@ def test_unknown_key_is_rejected_rather_than_ignored(tmp_path):
         load_config(path)
 
 
+def test_unknown_section_is_rejected_rather_than_ignored(tmp_path):
+    """A misspelt section used to load cleanly with all of its values dropped."""
+    path = write_config(tmp_path, {"detectoin": {"conf_threshold": 0.9}})
+    with pytest.raises(ConfigError, match="detectoin"):
+        load_config(path)
+
+
+def test_dataclass_defaults_match_the_shipped_config():
+    """Without config.yaml the dataclass defaults are what runs. They must not
+    quietly re-enable a setting the YAML rejected after measurement."""
+    assert Config().runtime.opencv_threads == load_config().runtime.opencv_threads == 0
+
+
 def test_relative_paths_resolve_against_the_repo_root(tmp_path):
     path = write_config(tmp_path, {"model": {"path": "models/custom.onnx"}})
     cfg = load_config(path)
