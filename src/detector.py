@@ -396,6 +396,10 @@ class Detector:
         }
 
 
+# Read once at import, before anything in this project has changed it.
+_OPENCV_DEFAULT_THREADS = cv2.getNumThreads()
+
+
 def set_opencv_threads(n: int) -> None:
     """Cap OpenCV's thread pool. 0 leaves OpenCV's own default in place.
 
@@ -406,9 +410,12 @@ def set_opencv_threads(n: int) -> None:
     1.1 ms of a 50 ms frame, so there was very little to reclaim. The knob stays
     because it is the right lever on a busier machine -- it is just not a win
     here. Numbers in docs/PERFORMANCE_ANALYSIS.md.
+
+    0 *restores* the default rather than doing nothing: the setting is global to
+    the process, so a benchmark that capped one row would otherwise leave every
+    later row capped as well, while labelling them uncapped.
     """
-    if n > 0:
-        cv2.setNumThreads(n)
+    cv2.setNumThreads(n if n > 0 else _OPENCV_DEFAULT_THREADS)
 
 
 def cpu_label() -> str:

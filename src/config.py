@@ -52,7 +52,7 @@ class RuntimeConfig:
     device: str = "cpu"
     intra_op_threads: int = 0
     inter_op_threads: int = 1
-    opencv_threads: int = 2
+    opencv_threads: int = 0
     preprocess_mode: str = "prealloc"
     infer_every: int = 1
 
@@ -150,7 +150,18 @@ def load_config(path: Path | str | None = None) -> Config:
     if not isinstance(raw, dict):
         raise ConfigError(f"{cfg_path} must contain a YAML mapping at the top level")
 
-    for section_name in (f.name for f in dataclasses.fields(cfg)):
+    sections = [f.name for f in dataclasses.fields(cfg)]
+    # The per-key check below only runs for sections it knows, so a misspelt
+    # section name ("detectoin:") would otherwise load cleanly with every value
+    # in it ignored.
+    unknown = sorted(str(k) for k in raw if k not in sections)
+    if unknown:
+        raise ConfigError(
+            f"Unknown config section(s) {', '.join(unknown)} in {cfg_path}. "
+            f"Valid sections: {', '.join(sorted(sections))}"
+        )
+
+    for section_name in sections:
         section_raw = raw.get(section_name)
         if section_raw is None:
             continue
